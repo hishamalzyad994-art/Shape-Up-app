@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import asyncio
 import logging
 from pathlib import Path
 from pydantic import BaseModel, EmailStr, Field
@@ -586,10 +587,18 @@ async def subscription_poll(session_id: str, user=Depends(get_current_user)):
     # SDK returns metadata as a StripeObject (not a plain dict). We bypass that wrapper
     # and call stripe directly — stripe.api_base is already pointed at the emergent proxy
     # by StripeCheckout.__init__.
-    try:
-        session = stripe.checkout.Session.retrieve(session_id)
-    except stripe.error.StripeError as e:
-        raise HTTPException(status_code=404, detail=f"Session not found: {str(e)}")
+    # Also: emergent proxy occasionally 404s right after creating a session (race). Retry.
+    session = None
+    last_err: Optional[Exception] = None
+    for attempt in range(4):
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            break
+        except stripe.error.StripeError as e:
+            last_err = e
+            await asyncio.sleep(0.6 * (attempt + 1))
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"Session not found: {last_err}")
 
     class _S:  # tiny shim so existing access pattern stays identical
         status = session.status

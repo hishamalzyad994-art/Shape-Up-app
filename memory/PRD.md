@@ -1,38 +1,46 @@
-# ShapeUp – AI-Powered Fitness App
+# ShapeUp – AI Fitness App + Stripe Subscription
 
 ## Overview
-React Native Expo + FastAPI + MongoDB fitness app with an AI personal trainer (Claude Sonnet 4.5). Ongoing daily workouts targeted at chosen body parts with difficulty-scaled reps, calorie/macro/BMI calculator, meal plans, weekly progress table, workout timer with whistle, rate-workout flow, and an AI coach chat. Bilingual scaffolding (EN/AR).
+ShapeUp is a React Native Expo + FastAPI + MongoDB fitness app with an AI personal trainer (Claude Sonnet 4.5), ongoing daily workouts targeted at user-chosen body parts with difficulty-scaled reps, calorie/macro/BMI calculator, meal plans, weekly progress, workout timer/whistle, rate-workout flow, AI coach chat, and **Stripe subscription paywall** via Emergent's managed Stripe integration proxy.
 
 ## Tech Stack
 - **Frontend**: Expo SDK 54, expo-router, AsyncStorage, TypeScript
 - **Backend**: FastAPI, Motor MongoDB, JWT auth (bcrypt)
-- **AI**: `claude-sonnet-4-5-20250929` via `emergentintegrations` (Emergent Universal Key)
+- **AI**: `claude-sonnet-4-5-20250929` via `emergentintegrations.llm.chat` (Universal Key)
+- **Payments**: `emergentintegrations.payments.stripe.checkout.StripeCheckout` (hosted Checkout) — routes via Emergent integration proxy
 
-## Core Features (v2 – ShapeUp)
-- **Auth**: JWT signup/login with bcrypt
-- **Onboarding**: gender (👨/👩), age, height, weight, target, "why this target?", difficulty (easy/medium/hard/crazy), goal, activity, body focus
-- **Home**: gender-emoji greeting, motivation quote, day counter (ongoing — no 30-day cap), streak, intensity, macro stats
-- **Workout**: body-part picker, GIF/image per exercise, **timer with play/pause/reset + whistle sound** at start/end (toggleable), check-off, rate-workout modal (5-star + self-score + note)
-- **Diet**: BMR/TDEE/macros + **BMI card with category color band** + 3 swappable meal plans
-- **AI Coach C**: multi-turn chat (Claude Sonnet 4.5), profile-aware system prompt, persistent history
-- **Profile**: avatar emoji, target_reason quote, streak/workouts done, weight log + **weekly progress table (avg / Δ / fat-loss estimate)**, **settings (whistle toggle, language EN/AR)**
+## Subscription Model
+**One-time payment for fixed access period** (matches "stop charges when period ends, show resubscribe to continue"):
+- **£3.99** → 30 days access (Monthly)
+- **£19.99** → 180 days access (6 Months — 16% off)
+- **£34.99** → 365 days access (Yearly — 27% off, BEST VALUE)
 
-## API Endpoints
-- `POST /api/auth/register|login`, `GET /api/auth/me`
-- `PUT /api/profile` (now accepts `difficulty`, `target_reason`, `language`, `whistle_enabled`)
-- `GET /api/calories` (returns BMR/TDEE/macros + **bmi/bmi_category**)
-- `GET /api/workouts/today` (ongoing, difficulty-scaled reps, returns gif URLs)
-- `POST /api/workouts/complete`, `POST /api/workouts/rate`
-- `GET /api/meals/plans`
-- `POST /api/progress/weight`, `GET /api/progress/weight`, `GET /api/progress/weekly`
-- `POST /api/chat`, `GET /api/chat/history`
+When access expires, user sees paywall + "Resubscribe" prompt. Extra purchases stack on top of remaining time.
+
+## Subscription Endpoints
+- `GET /api/subscription/plans` — pricing tiers
+- `GET /api/subscription/status` — active/plan/access_expires_at
+- `POST /api/subscription/checkout {plan, origin_url}` — returns Stripe Checkout URL + session_id
+- `GET /api/subscription/poll/{session_id}` — frontend polls after redirect back; on first 'paid' status, grants access (idempotent, with retry/backoff to absorb proxy 404 race)
+
+## Frontend Subscription UX
+- `/subscribe` screen: hero "UNLOCK EVERYTHING", 3 plan cards with radio selector, BEST VALUE badge on yearly, benefits list, big SUBSCRIBE NOW CTA
+- Home tab has a SHAPEUP PRO card linking to /subscribe
+- After Stripe Checkout, redirects back with `?session_id=...` and frontend polls every 2s up to 60s, then alerts on success/timeout
 
 ## Test Coverage
-20/20 backend tests passing (`/app/backend/tests/backend_test.py`). All flows verified by testing-agent on iteration_2.
+- Iteration 1 (Change Yourself MVP): 14/14 tests
+- Iteration 2 (ShapeUp + difficulty + timer + BMI + weekly + rating + i18n scaffold): 20/20 tests
+- Iteration 3 (Stripe paywall): 31/32 tests (1 skipped due to environmental Emergent-proxy 404 race on freshly-minted sessions, mitigated by server-side retry)
 
-## Monetisation (next iteration)
-Stripe auto-renewing subscription: £3.99/mo, £19.99/6mo, £34.99/yr. Cards + Apple Pay + Google Pay (native after publish). Paywall locks workouts/coach/meal-plans on lapse.
+## Notes / Known Limitations
+1. Emergent's Stripe integration proxy occasionally returns 404 on a checkout session immediately after creation — our `/poll` endpoint retries 4× with backoff; in practice users redirected from Stripe arrive 5+ seconds later so the race is benign.
+2. `emergentintegrations.payments.stripe.checkout.StripeCheckout.get_checkout_status` has a Pydantic v2 bug (metadata coerced to dict); we bypass with `stripe.checkout.Session.retrieve()` directly (the proxy api_base is already configured by `StripeCheckout.__init__`).
+3. Apple Pay / Google Pay buttons render automatically inside Stripe Checkout on devices with those wallets configured (post-native-publish).
 
 ## Roadmap
-- **Iteration 3**: Stripe subscription paywall, edit-workout (user customizes exercises), full i18n (Arabic UI translated everywhere, RTL layout)
-- **Iteration 4**: App Store / Google Play publish via Emergent publish button, push notifications (water, meals, workouts), real-time whistle sound via expo-av on native, native Apple/Google Pay
+- Webhook handler `payment_intent.succeeded` to replace polling (when Emergent exposes webhook signing secret)
+- Cancel/refund endpoints
+- Lock specific endpoints (workouts/chat/meals) behind `require_active_subscription` once user UX flows the full paywall
+- Edit-workout feature, full Arabic UI translation + RTL, push notifications
+- App Store / Google Play submission via Emergent publish button

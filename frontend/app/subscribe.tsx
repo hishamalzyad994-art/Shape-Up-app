@@ -55,8 +55,15 @@ export default function Subscribe() {
           return;
         }
         pollRef.current = setTimeout(tick, 2000);
-      } catch (e) {
-        setPolling(false);
+      } catch (e: any) {
+        attempts++;
+        if (attempts >= 30) {
+          setPolling(false);
+          Alert.alert('Payment confirmation timed out', 'Please refresh or contact support if you were charged.');
+          return;
+        }
+        // network blip — keep polling
+        pollRef.current = setTimeout(tick, 2000);
       }
     };
     tick();
