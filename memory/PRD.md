@@ -1,32 +1,38 @@
-# Change Yourself – 30-Day Weight Loss Challenge
+# ShapeUp – AI-Powered Fitness App
 
 ## Overview
-A React Native Expo mobile app that delivers a 30-day fitness transformation: daily workouts targeted at user-selected body parts, calorie/macro calculator (BMR/TDEE), curated meal plans, weight progress tracking, and an AI personal trainer powered by Claude Sonnet 4.5.
+React Native Expo + FastAPI + MongoDB fitness app with an AI personal trainer (Claude Sonnet 4.5). Ongoing daily workouts targeted at chosen body parts with difficulty-scaled reps, calorie/macro/BMI calculator, meal plans, weekly progress table, workout timer with whistle, rate-workout flow, and an AI coach chat. Bilingual scaffolding (EN/AR).
 
 ## Tech Stack
-- **Frontend**: Expo SDK 54, expo-router (file-based navigation, tabs), AsyncStorage for token, TypeScript.
-- **Backend**: FastAPI + Motor (async MongoDB), JWT auth with bcrypt, `emergentintegrations.llm.chat.LlmChat` for AI.
-- **AI**: `claude-sonnet-4-5-20250929` via Emergent Universal Key.
+- **Frontend**: Expo SDK 54, expo-router, AsyncStorage, TypeScript
+- **Backend**: FastAPI, Motor MongoDB, JWT auth (bcrypt)
+- **AI**: `claude-sonnet-4-5-20250929` via `emergentintegrations` (Emergent Universal Key)
 
-## Core Features
-1. **Auth** – JWT-based register/login screens with high-impact dark fitness aesthetic.
-2. **Onboarding wizard** – age, gender, height, weight, target, goal, activity level, body focus.
-3. **Home dashboard** – Day X/30, streak counter, progress bar, macro stats.
-4. **Workout tab** – Body-part picker (Belly, Chest, Arms, Legs, Waist, Full body) + targeted exercise list with check-off and "Complete Day".
-5. **Diet tab** – BMR/TDEE/macro card + 3 swappable meal plans (fat loss / muscle gain / healthy) with images & recipes.
-6. **Chat tab** – Multi-turn AI coach with persistent history, conversational suggestions.
-7. **Profile tab** – Start/Now/Target weight + weight-log history + streak/days-done stats + sign-out.
+## Core Features (v2 – ShapeUp)
+- **Auth**: JWT signup/login with bcrypt
+- **Onboarding**: gender (👨/👩), age, height, weight, target, "why this target?", difficulty (easy/medium/hard/crazy), goal, activity, body focus
+- **Home**: gender-emoji greeting, motivation quote, day counter (ongoing — no 30-day cap), streak, intensity, macro stats
+- **Workout**: body-part picker, GIF/image per exercise, **timer with play/pause/reset + whistle sound** at start/end (toggleable), check-off, rate-workout modal (5-star + self-score + note)
+- **Diet**: BMR/TDEE/macros + **BMI card with category color band** + 3 swappable meal plans
+- **AI Coach C**: multi-turn chat (Claude Sonnet 4.5), profile-aware system prompt, persistent history
+- **Profile**: avatar emoji, target_reason quote, streak/workouts done, weight log + **weekly progress table (avg / Δ / fat-loss estimate)**, **settings (whistle toggle, language EN/AR)**
 
-## Key Endpoints
+## API Endpoints
 - `POST /api/auth/register|login`, `GET /api/auth/me`
-- `PUT /api/profile`, `GET /api/calories`
-- `GET /api/workouts/today`, `POST /api/workouts/complete`
+- `PUT /api/profile` (now accepts `difficulty`, `target_reason`, `language`, `whistle_enabled`)
+- `GET /api/calories` (returns BMR/TDEE/macros + **bmi/bmi_category**)
+- `GET /api/workouts/today` (ongoing, difficulty-scaled reps, returns gif URLs)
+- `POST /api/workouts/complete`, `POST /api/workouts/rate`
 - `GET /api/meals/plans`
-- `POST /api/progress/weight`, `GET /api/progress/weight`
+- `POST /api/progress/weight`, `GET /api/progress/weight`, `GET /api/progress/weekly`
 - `POST /api/chat`, `GET /api/chat/history`
 
-## Design
-"Performance Pro" archetype – black bg (`#050505`), electric red primary (`#FF3B30`), volt-lime accent (`#CCFF00`), sharp borders, uppercase bold typography.
+## Test Coverage
+20/20 backend tests passing (`/app/backend/tests/backend_test.py`). All flows verified by testing-agent on iteration_2.
 
-## Monetisation Hook (future)
-Premium subscription: AI voice coach, video exercise demos, custom meal plans, smartwatch sync.
+## Monetisation (next iteration)
+Stripe auto-renewing subscription: £3.99/mo, £19.99/6mo, £34.99/yr. Cards + Apple Pay + Google Pay (native after publish). Paywall locks workouts/coach/meal-plans on lapse.
+
+## Roadmap
+- **Iteration 3**: Stripe subscription paywall, edit-workout (user customizes exercises), full i18n (Arabic UI translated everywhere, RTL layout)
+- **Iteration 4**: App Store / Google Play publish via Emergent publish button, push notifications (water, meals, workouts), real-time whistle sound via expo-av on native, native Apple/Google Pay
