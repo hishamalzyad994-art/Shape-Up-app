@@ -378,7 +378,7 @@ async def rate_workout(req: RateWorkoutRequest, user=Depends(get_current_user)):
 
 @api_router.get("/progress/weekly")
 async def weekly_progress(user=Depends(get_current_user)):
-    logs = await db.weight_logs.find({"user_id": user["id"]}, {"_id": 0}).sort("logged_at", 1).to_list(1000)
+    logs = await db.weight_logs.find({"user_id": user["id"]}, {"_id": 0}).sort("logged_at", 1).limit(1000).to_list(None)
     if not logs:
         return {"weeks": []}
     start = datetime.fromisoformat(logs[0]["logged_at"])
@@ -443,7 +443,7 @@ async def log_weight(req: WeightLog, user=Depends(get_current_user)):
 
 @api_router.get("/progress/weight")
 async def get_weights(user=Depends(get_current_user)):
-    logs = await db.weight_logs.find({"user_id": user["id"]}, {"_id": 0}).sort("logged_at", 1).to_list(500)
+    logs = await db.weight_logs.find({"user_id": user["id"]}, {"_id": 0}).sort("logged_at", 1).limit(500).to_list(None)
     return {"logs": logs}
 
 
@@ -482,7 +482,7 @@ async def chat(req: ChatRequest, user=Depends(get_current_user)):
 
 @api_router.get("/chat/history")
 async def chat_history(user=Depends(get_current_user)):
-    msgs = await db.chat_history.find({"user_id": user["id"]}, {"_id": 0}).sort("ts", 1).to_list(200)
+    msgs = await db.chat_history.find({"user_id": user["id"]}, {"_id": 0}).sort("ts", 1).limit(200).to_list(None)
     return {"messages": msgs}
 
 
