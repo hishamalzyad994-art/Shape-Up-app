@@ -119,6 +119,20 @@ export default function Home() {
           </View>
           <Ionicons name="chatbubble-ellipses" size={32} color={COLORS.primary} />
         </TouchableOpacity>
+
+        <TouchableOpacity
+          testID="home-subscribe-cta"
+          style={styles.proCard}
+          onPress={() => router.push('/subscribe')}
+          activeOpacity={0.85}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.proKicker}>✨ SHAPEUP PRO</Text>
+            <Text style={styles.proTitle}>From £3.99</Text>
+            <Text style={styles.proSub}>Unlock everything. One-tap subscribe.</Text>
+          </View>
+          <Ionicons name="arrow-forward-circle" size={36} color={COLORS.secondary} />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -151,4 +165,8 @@ const styles = StyleSheet.create({
   coachKicker: { color: COLORS.primary, fontSize: 10, letterSpacing: 3, fontWeight: '900' },
   coachTitle: { color: COLORS.text, fontSize: 20, fontWeight: '900', marginTop: 2 },
   coachSub: { color: COLORS.textDim, fontSize: 12, marginTop: 4 },
+  proCard: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderColor: COLORS.secondary, backgroundColor: COLORS.surfaceElevated, padding: 18, marginTop: 12 },
+  proKicker: { color: COLORS.secondary, fontSize: 11, letterSpacing: 2.5, fontWeight: '900' },
+  proTitle: { color: COLORS.text, fontSize: 22, fontWeight: '900', marginTop: 2, letterSpacing: -0.5 },
+  proSub: { color: COLORS.textDim, fontSize: 12, marginTop: 4 },
 });

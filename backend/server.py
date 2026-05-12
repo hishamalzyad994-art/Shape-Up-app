@@ -12,6 +12,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt as pyjwt
+import stripe
+from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 ROOT_DIR = Path(__file__).parent
@@ -27,6 +29,10 @@ JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGO = os.environ.get('JWT_ALGO', 'HS256')
 JWT_EXPIRES_MINUTES = int(os.environ.get('JWT_EXPIRES_MINUTES', '43200'))
 EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
+STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', '')
+APP_BASE_URL = os.environ.get('APP_BASE_URL', '')
+stripe.api_key = STRIPE_API_KEY
+stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY) if STRIPE_API_KEY else None
 
 app = FastAPI(title="Change Yourself API")
 api_router = APIRouter(prefix="/api")
@@ -486,7 +492,172 @@ async def chat_history(user=Depends(get_current_user)):
     return {"messages": msgs}
 
 
+# ============ STRIPE SUBSCRIPTIONS (one-time access passes via emergentintegrations) ============
+# User pays once for N days of access. After expiry → paywall + resubscribe prompt.
+PLAN_CONFIG = {
+    "monthly":   {"amount": 3.99,  "days": 30,  "label": "Monthly",  "display": "£3.99"},
+    "sixmonths": {"amount": 19.99, "days": 180, "label": "6 Months", "display": "£19.99"},
+    "yearly":    {"amount": 34.99, "days": 365, "label": "Yearly",   "display": "£34.99"},
+}
+
+
+class CheckoutRequest(BaseModel):
+    plan: Literal['monthly', 'sixmonths', 'yearly']
+    origin_url: Optional[str] = None
+
+
+def is_subscription_active(user: dict) -> bool:
+    sub = user.get("subscription") if user else None
+    if not sub:
+        return False
+    expires = sub.get("access_expires_at")
+    if not expires:
+        return False
+    try:
+        return datetime.fromisoformat(expires) > now_utc()
+    except Exception:
+        return False
+
+
+@api_router.get("/subscription/plans")
+async def subscription_plans():
+    return {
+        "currency": "GBP",
+        "plans": [
+            {"key": "monthly",   "label": "Monthly",   "amount": 3.99,  "display": "£3.99",  "period": "30 days",   "savings": None},
+            {"key": "sixmonths", "label": "6 Months",  "amount": 19.99, "display": "£19.99", "period": "180 days",  "savings": "16% off"},
+            {"key": "yearly",    "label": "Yearly",    "amount": 34.99, "display": "£34.99", "period": "365 days",  "savings": "27% off"},
+        ],
+    }
+
+
+@api_router.get("/subscription/status")
+async def subscription_status(user=Depends(get_current_user)):
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password": 0})
+    sub = (fresh or {}).get("subscription") or {}
+    active = is_subscription_active(fresh)
+    return {
+        "active": active,
+        "plan": sub.get("plan"),
+        "amount": sub.get("amount"),
+        "purchased_at": sub.get("purchased_at"),
+        "access_expires_at": sub.get("access_expires_at"),
+        "last_payment_status": sub.get("last_payment_status"),
+    }
+
+
+@api_router.post("/subscription/checkout")
+async def subscription_checkout(req: CheckoutRequest, user=Depends(get_current_user)):
+    if not stripe_checkout:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+    cfg = PLAN_CONFIG[req.plan]
+    origin = (req.origin_url or APP_BASE_URL).rstrip('/')
+    success_url = f"{origin}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/subscription/cancelled"
+    payment_req = CheckoutSessionRequest(
+        amount=cfg["amount"],
+        currency="gbp",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={"user_id": user["id"], "plan": req.plan, "days": str(cfg["days"]), "email": user["email"]},
+    )
+    session = await stripe_checkout.create_checkout_session(payment_req)
+    # Record pending payment
+    await db.payments.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "session_id": session.session_id,
+        "plan": req.plan,
+        "amount": cfg["amount"],
+        "currency": "gbp",
+        "payment_status": "pending",
+        "created_at": now_utc().isoformat(),
+    })
+    return {"url": session.url, "session_id": session.session_id, "plan": req.plan, "display": cfg["display"]}
+
+
+@api_router.get("/subscription/poll/{session_id}")
+async def subscription_poll(session_id: str, user=Depends(get_current_user)):
+    """Frontend polls this after redirecting back from Stripe.
+    On first 'paid' status, grants user N days of access."""
+    if not stripe_checkout:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+    # NOTE: emergentintegrations.get_checkout_status crashes on Pydantic v2 because Stripe's
+    # SDK returns metadata as a StripeObject (not a plain dict). We bypass that wrapper
+    # and call stripe directly — stripe.api_base is already pointed at the emergent proxy
+    # by StripeCheckout.__init__.
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=404, detail=f"Session not found: {str(e)}")
+
+    class _S:  # tiny shim so existing access pattern stays identical
+        status = session.status
+        payment_status = session.payment_status
+        amount_total = session.amount_total
+    status_res = _S()
+    payment_doc = await db.payments.find_one({"session_id": session_id, "user_id": user["id"]}, {"_id": 0})
+    if not payment_doc:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    # Update payment record
+    await db.payments.update_one(
+        {"session_id": session_id},
+        {"$set": {
+            "stripe_status": status_res.status,
+            "payment_status": status_res.payment_status,
+            "amount_total": status_res.amount_total,
+            "updated_at": now_utc().isoformat(),
+        }}
+    )
+
+    granted = False
+    if status_res.payment_status == "paid" and payment_doc.get("payment_status") != "paid":
+        # Idempotent grant: mark payment paid + extend access
+        plan = payment_doc["plan"]
+        days = PLAN_CONFIG[plan]["days"]
+        fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+        existing_expires = (fresh.get("subscription") or {}).get("access_expires_at")
+        base = now_utc()
+        if existing_expires:
+            try:
+                exp_dt = datetime.fromisoformat(existing_expires)
+                if exp_dt > base:
+                    base = exp_dt  # extend on top of remaining time
+            except Exception:
+                pass
+        new_expires = base + timedelta(days=days)
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {
+                "subscription": {
+                    "plan": plan,
+                    "amount": payment_doc["amount"],
+                    "purchased_at": now_utc().isoformat(),
+                    "access_expires_at": new_expires.isoformat(),
+                    "last_payment_status": "paid",
+                    "session_id": session_id,
+                }
+            }}
+        )
+        await db.payments.update_one({"session_id": session_id}, {"$set": {"payment_status": "paid"}})
+        granted = True
+
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return {
+        "payment_status": status_res.payment_status,
+        "checkout_status": status_res.status,
+        "granted": granted,
+        "active": is_subscription_active(fresh),
+        "access_expires_at": (fresh.get("subscription") or {}).get("access_expires_at"),
+    }
+
+
+# ============ END STRIPE ============
+
+
 app.include_router(api_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
