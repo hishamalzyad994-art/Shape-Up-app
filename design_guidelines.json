@@ -1,0 +1,124 @@
+{
+  "project_name": "Change Yourself",
+  "theme": "Dark",
+  "archetype": "2 (Performance Pro)",
+  "vibe": "Energetic, bold, high-impact, motivating, fitness-focused",
+  "colors": {
+    "background": "#050505",
+    "surface": "#111111",
+    "surface_elevated": "#1A1A1A",
+    "primary": "#FF3B30",
+    "primary_hover": "#E6352B",
+    "secondary": "#CCFF00",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#A1A1AA",
+    "border": "#27272A",
+    "success": "#22C55E",
+    "error": "#EF4444"
+  },
+  "typography": {
+    "heading_font": "Bebas Neue, sans-serif",
+    "body_font": "Inter, sans-serif",
+    "scales": {
+      "h1": "text-5xl md:text-6xl font-bold tracking-tighter uppercase leading-none",
+      "h2": "text-3xl md:text-4xl font-bold tracking-tight uppercase leading-none",
+      "h3": "text-2xl font-bold uppercase tracking-wide",
+      "body": "text-base tracking-normal text-zinc-300",
+      "small": "text-sm text-zinc-400 uppercase tracking-[0.1em]"
+    }
+  },
+  "layout_and_spacing": {
+    "philosophy": "Mobile-first, tactical minimalism. Limit max-width to mobile dimensions on desktop (e.g. max-w-md mx-auto min-h-screen relative).",
+    "grid_system": "Bento style for dashboard metrics. Tightly packed for data correlation (gap-3 or gap-4).",
+    "border_radius": "Sharp edges or minimal rounding (rounded-none or rounded-sm) to fit the 'Performance Pro' aesthetic.",
+    "container_padding": "px-4 or px-6 for screen edges. p-4 inside cards."
+  },
+  "surface_strategy": {
+    "cards": "Flat background (bg-[#111111]), 1px subtle border (border-white/10). No soft shadows, use sharp solid 1px strokes.",
+    "buttons": "High saturation blocks (bg-[#FF3B30]). Active state shifts slightly darker.",
+    "overlays": "Glassmorphism with heavy blur (backdrop-blur-xl bg-black/60) and 1px border-white/10."
+  },
+  "icons_strategy": {
+    "library": "lucide-react",
+    "style": "Sharp, 2px stroke weight, high contrast."
+  },
+  "screens": [
+    {
+      "name": "Onboarding / Auth",
+      "layout": "Full screen background image with bg-black/70 overlay. Large Bebas Neue header. High-contrast solid buttons.",
+      "components_needed": ["Input", "Button"],
+      "test_ids": ["signup-email-input", "signup-submit-button"]
+    },
+    {
+      "name": "Home Dashboard",
+      "layout": "Grid-based bento layout. Header with user profile and streak count (in Volt Lime). Day X/30 progress bar. Big prominent 'Start Daily Workout' card.",
+      "components_needed": ["Progress Bar", "Cards (for stats)", "Circular Progress"],
+      "test_ids": ["home-streak-counter", "home-start-workout-btn", "home-progress-bar"]
+    },
+    {
+      "name": "Daily Workout",
+      "layout": "Vertical list of exercises. Each item shows a thumbnail, name, sets/reps. Sticky footer CTA 'Complete Workout'.",
+      "components_needed": ["List items", "Sticky bottom bar"],
+      "test_ids": ["workout-exercise-item", "workout-complete-btn"]
+    },
+    {
+      "name": "Body Part Picker",
+      "layout": "Visual grid of selectable cards. Highlighting selected muscle group in primary color (#FF3B30) with 1px border.",
+      "components_needed": ["Toggle Group / Selectable Cards"],
+      "test_ids": ["body-picker-chest", "body-picker-legs"]
+    },
+    {
+      "name": "Diet Program / Calorie Calculator",
+      "layout": "Input form for BMR/TDEE calculation. Results presented in large bold typography. Meal plan cards below.",
+      "components_needed": ["Form elements", "Diet Cards"],
+      "test_ids": ["calorie-calc-submit", "diet-plan-card"]
+    },
+    {
+      "name": "AI Trainer Chat",
+      "layout": "Standard chat interface. Dark background. User messages in dark gray, AI in primary-tinged gray (#1A1A1A).",
+      "components_needed": ["Scrollable chat view", "Chat Input"],
+      "test_ids": ["ai-chat-input", "ai-chat-send-btn"]
+    }
+  ],
+  "image_urls": {
+    "hero_workout_1": {
+      "url": "https://images.unsplash.com/photo-1543300722-222718fd8509?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTN8MHwxfHNlYXJjaHw0fHxpbnRlbnNlJTIwd29ya291dCUyMGd5bSUyMGRhcmt8ZW58MHx8fHwxNzc4NDIxMDgyfDA&ixlib=rb-4.1.0&q=85",
+      "category": "Onboarding Background / Hero",
+      "description": "Man wearing black tank top sitting on weight bench."
+    },
+    "hero_workout_2": {
+      "url": "https://images.unsplash.com/photo-1605296867724-fa87a8ef53fd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTN8MHwxfHNlYXJjaHwzfHxpbnRlbnNlJTIwd29ya291dCUyMGd5bSUyMGRhcmt8ZW58MHx8fHwxNzc4NDIxMDgyfDA&ixlib=rb-4.1.0&q=85",
+      "category": "Workout Category",
+      "description": "Woman in black tank top doing intense exercise."
+    },
+    "workout_leg_press": {
+      "url": "https://images.pexels.com/photos/136404/pexels-photo-136404.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "Lower Body Workout",
+      "description": "Woman doing leg press."
+    },
+    "meal_prep_1": {
+      "url": "https://images.unsplash.com/photo-1609915437515-9d0f0166b537?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHw0fHxoZWFsdGh5JTIwbWVhbCUyMHByZXAlMjBoZWFsdGh5JTIwZm9vZHxlbnwwfHx8fDE3Nzg2MDc1NDR8MA&ixlib=rb-4.1.0&q=85",
+      "category": "Diet Plan Card",
+      "description": "Healthy meal prep in container."
+    },
+    "meal_prep_2": {
+      "url": "https://images.unsplash.com/photo-1666819691716-827f78d892f3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHwzfHxoZWFsdGh5JTIwbWVhbCUyMHByZXAlMjBoZWFsdGh5JTIwZm9vZHxlbnwwfHx8fDE3Nzg2MDc1NDR8MA&ixlib=rb-4.1.0&q=85",
+      "category": "Diet Plan Cover",
+      "description": "Multiple trays of healthy food."
+    },
+    "running_shoes": {
+      "url": "https://images.unsplash.com/photo-1765914448100-0845241f7481?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwyfHxydW5uaW5nJTIwbmVvbiUyMHNob2VzfGVufDB8fHx8MTc3ODYwNzU0M3ww&ixlib=rb-4.1.0&q=85",
+      "category": "Running/Cardio Category",
+      "description": "Neon running shoe."
+    }
+  },
+  "instructions_to_main_agent": [
+    "Build a mobile-first web app UI. Use a wrapper container on desktop (max-w-md mx-auto min-h-screen bg-[#050505] relative shadow-2xl) to simulate a mobile app.",
+    "Make sure to load Google Font 'Bebas Neue' via Google Fonts API in the index.html or global css, and apply it to headings.",
+    "Implement the 'Performance Pro' aesthetics strictly: use 1px hard borders (border-white/10), deep black backgrounds, and punchy neon accents (Primary #FF3B30, Secondary #CCFF00). No soft shadows anywhere.",
+    "ALL interactive elements (buttons, inputs, links, cards acting as buttons) MUST have data-testid attributes for testing.",
+    "Create a bottom navigation bar for mobile to switch between Home, Workout, Diet, Chat, and Profile. It should be fixed at bottom of the max-w-md container.",
+    "For the 'Body Part Picker', use a bento-style visual grid of selectable cards, ensuring active states use the primary electric red.",
+    "Do not use default Shadcn rounded borders. Override standard radii to `rounded-none` or `rounded-sm` for a sharper, more aggressive fitness look."
+  ]
+}
