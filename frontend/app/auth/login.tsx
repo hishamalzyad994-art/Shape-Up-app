@@ -38,10 +38,10 @@ export default function Login() {
       >
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <View style={styles.brand}>
-            <Text style={styles.kicker}>30-DAY CHALLENGE</Text>
-            <Text style={styles.title}>CHANGE{'\n'}YOURSELF</Text>
+            <Text style={styles.kicker}>SHAPE YOUR LIFE</Text>
+            <Text style={styles.title}>SHAPE{'\n'}UP</Text>
             <View style={styles.accentBar} />
-            <Text style={styles.sub}>Welcome back, athlete. Let's burn.</Text>
+            <Text style={styles.sub}>Welcome back. Time to grind.</Text>
           </View>
 
           <View style={styles.form}>

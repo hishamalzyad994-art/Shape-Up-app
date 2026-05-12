@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, COLORS } from '../../src/AuthContext';
+import { LANGUAGES } from '../../src/i18n';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Profile() {
@@ -12,12 +13,17 @@ export default function Profile() {
   const router = useRouter();
   const [newWeight, setNewWeight] = useState('');
   const [logs, setLogs] = useState<any[]>([]);
+  const [weeks, setWeeks] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const r = await api<any>('/progress/weight');
       setLogs(r.logs || []);
+    } catch (_) {}
+    try {
+      const w = await api<any>('/progress/weekly');
+      setWeeks(w.weeks || []);
     } catch (_) {}
   }, [api]);
 
@@ -41,11 +47,23 @@ export default function Profile() {
     router.replace('/auth/login');
   };
 
+  const setLanguage = async (lang: string) => {
+    await api('/profile', { method: 'PUT', body: JSON.stringify({ language: lang }) });
+    await refreshUser();
+  };
+  const toggleWhistle = async (val: boolean) => {
+    await api('/profile', { method: 'PUT', body: JSON.stringify({ whistle_enabled: val }) });
+    await refreshUser();
+  };
+
   const profile = user?.profile || {};
   const startWeight = logs.length ? logs[0].weight_kg : profile.weight_kg;
   const currentWeight = profile.weight_kg;
   const targetWeight = profile.target_weight_kg;
   const lost = startWeight && currentWeight ? (startWeight - currentWeight).toFixed(1) : '0.0';
+  const whistleOn = profile.whistle_enabled !== false;
+  const currentLang = profile.language || 'en';
+  const genderEmoji = profile.gender === 'female' ? '👩' : '👨';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -62,11 +80,14 @@ export default function Profile() {
 
         <View style={styles.userCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+            <Text style={styles.avatarEmoji}>{genderEmoji}</Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.userName}>{user?.name}</Text>
             <Text style={styles.userEmail}>{user?.email}</Text>
+            {profile.target_reason ? (
+              <Text style={styles.userReason}>💭 {profile.target_reason}</Text>
+            ) : null}
           </View>
         </View>
 
@@ -77,9 +98,9 @@ export default function Profile() {
             <Text style={styles.statBigUnit}>DAYS</Text>
           </View>
           <View style={styles.statBig}>
-            <Text style={styles.statKicker}>DONE</Text>
-            <Text style={[styles.statBigNum, { color: COLORS.primary }]}>{user?.completed_days?.length || 0}/30</Text>
-            <Text style={styles.statBigUnit}>WORKOUTS</Text>
+            <Text style={styles.statKicker}>WORKOUTS</Text>
+            <Text style={[styles.statBigNum, { color: COLORS.primary }]}>{user?.completed_days?.length || 0}</Text>
+            <Text style={styles.statBigUnit}>DONE</Text>
           </View>
         </View>
 
@@ -125,33 +146,77 @@ export default function Profile() {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>HISTORY</Text>
-        {logs.length === 0 ? (
-          <Text style={styles.empty}>Log your first weight to track progress.</Text>
+        <Text style={styles.sectionTitle}>WEEKLY PROGRESS 📊</Text>
+        {weeks.length === 0 ? (
+          <Text style={styles.empty}>Log your weight weekly to see fat-loss trends.</Text>
         ) : (
-          logs.slice().reverse().slice(0, 10).map((l, i) => (
-            <View key={l.id} style={styles.histRow}>
-              <Text style={styles.histDate}>{new Date(l.logged_at).toLocaleDateString()}</Text>
-              <Text style={styles.histWeight}>{l.weight_kg} kg</Text>
+          <View style={styles.tableCard} testID="weekly-table">
+            <View style={styles.tableHead}>
+              <Text style={[styles.thCell, { flex: 1 }]}>WK</Text>
+              <Text style={[styles.thCell, { flex: 2 }]}>AVG</Text>
+              <Text style={[styles.thCell, { flex: 2 }]}>Δ</Text>
+              <Text style={[styles.thCell, { flex: 2 }]}>FAT</Text>
             </View>
-          ))
+            {weeks.map((w, i) => (
+              <View key={w.week} style={[styles.tableRow, i === weeks.length - 1 && { borderBottomWidth: 0 }]}>
+                <Text style={[styles.tdCell, { flex: 1, color: COLORS.secondary }]}>W{w.week}</Text>
+                <Text style={[styles.tdCell, { flex: 2 }]}>{w.avg_weight} kg</Text>
+                <Text style={[styles.tdCell, { flex: 2, color: w.delta < 0 ? COLORS.success : w.delta > 0 ? COLORS.error : COLORS.textDim }]}>
+                  {w.delta > 0 ? '+' : ''}{w.delta} kg
+                </Text>
+                <Text style={[styles.tdCell, { flex: 2, color: COLORS.primary }]}>-{w.fat_loss_est} kg</Text>
+              </View>
+            ))}
+          </View>
         )}
+
+        <Text style={styles.sectionTitle}>SETTINGS ⚙️</Text>
+        <View style={styles.settingsCard}>
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingTitle}>WHISTLE SOUND</Text>
+              <Text style={styles.settingDesc}>Plays at workout start & end</Text>
+            </View>
+            <Switch
+              testID="setting-whistle"
+              value={whistleOn}
+              onValueChange={toggleWhistle}
+              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+              thumbColor={whistleOn ? COLORS.secondary : '#888'}
+            />
+          </View>
+          <View style={[styles.settingRow, { borderBottomWidth: 0 }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingTitle}>LANGUAGE</Text>
+              <Text style={styles.settingDesc}>App language</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {LANGUAGES.map(l => (
+                <TouchableOpacity
+                  key={l.key}
+                  testID={`lang-${l.key}`}
+                  style={[styles.langChip, currentLang === l.key && styles.langChipActive]}
+                  onPress={() => setLanguage(l.key)}
+                >
+                  <Text style={[styles.langText, currentLang === l.key && { color: '#000' }]}>{l.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
 
         <Text style={styles.sectionTitle}>YOUR PROFILE</Text>
         <View style={styles.infoCard}>
-          <InfoRow label="GENDER" value={profile.gender} />
+          <InfoRow label="GENDER" value={profile.gender ? `${genderEmoji} ${profile.gender}` : null} />
           <InfoRow label="AGE" value={profile.age ? `${profile.age}` : null} />
           <InfoRow label="HEIGHT" value={profile.height_cm ? `${profile.height_cm} cm` : null} />
           <InfoRow label="GOAL" value={profile.goal?.replace('_', ' ')} />
+          <InfoRow label="DIFFICULTY" value={profile.difficulty} />
           <InfoRow label="ACTIVITY" value={profile.activity?.replace('_', ' ')} />
           <InfoRow label="FOCUS" value={(profile.body_focus || []).join(', ')} />
         </View>
 
-        <TouchableOpacity
-          testID="profile-edit-btn"
-          style={styles.editBtn}
-          onPress={() => router.push('/onboarding')}
-        >
+        <TouchableOpacity testID="profile-edit-btn" style={styles.editBtn} onPress={() => router.push('/onboarding')}>
           <Text style={styles.editText}>EDIT PROFILE</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -176,10 +241,11 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 42, fontWeight: '900', letterSpacing: -1.2, lineHeight: 42, marginTop: 4 },
   signOutBtn: { borderWidth: 1, borderColor: COLORS.border, padding: 12, backgroundColor: COLORS.surface },
   userCard: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, padding: 16, marginTop: 24 },
-  avatar: { width: 56, height: 56, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontSize: 24, fontWeight: '900' },
+  avatar: { width: 60, height: 60, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.primary },
+  avatarEmoji: { fontSize: 32 },
   userName: { color: COLORS.text, fontSize: 18, fontWeight: '900' },
   userEmail: { color: COLORS.textDim, fontSize: 12, marginTop: 2 },
+  userReason: { color: COLORS.secondary, fontSize: 11, marginTop: 6, fontStyle: 'italic' },
   statsGrid: { flexDirection: 'row', gap: 10, marginTop: 16 },
   statBig: { flex: 1, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, padding: 18, alignItems: 'center' },
   statKicker: { color: COLORS.textDim, fontSize: 10, letterSpacing: 2.5, fontWeight: '800' },
@@ -198,10 +264,19 @@ const styles = StyleSheet.create({
   weightInput: { flex: 1, borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   logBtn: { backgroundColor: COLORS.secondary, paddingHorizontal: 22, justifyContent: 'center' },
   logBtnText: { color: '#000', fontWeight: '900', letterSpacing: 2 },
-  histRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  histDate: { color: COLORS.textDim, fontSize: 13 },
-  histWeight: { color: COLORS.text, fontSize: 16, fontWeight: '900' },
+  tableCard: { borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface },
+  tableHead: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 12, paddingHorizontal: 14 },
+  thCell: { color: COLORS.textDim, fontSize: 10, letterSpacing: 2, fontWeight: '900' },
+  tableRow: { flexDirection: 'row', paddingVertical: 14, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border, alignItems: 'center' },
+  tdCell: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
   empty: { color: COLORS.textDim, fontSize: 13, textAlign: 'center', padding: 20 },
+  settingsCard: { borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface },
+  settingRow: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 12 },
+  settingTitle: { color: COLORS.text, fontSize: 13, fontWeight: '900', letterSpacing: 1.5 },
+  settingDesc: { color: COLORS.textDim, fontSize: 11, marginTop: 2 },
+  langChip: { borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12, paddingVertical: 8 },
+  langChipActive: { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
+  langText: { color: COLORS.text, fontSize: 12, fontWeight: '800', letterSpacing: 1 },
   infoCard: { borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   infoLabel: { color: COLORS.textDim, fontSize: 11, letterSpacing: 2, fontWeight: '800' },

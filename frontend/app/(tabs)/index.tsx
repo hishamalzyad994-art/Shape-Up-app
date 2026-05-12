@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, ImageBackground, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, COLORS } from '../../src/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { MOTIVATION_QUOTES } from '../../src/i18n';
 
 export default function Home() {
   const { user, api } = useAuth();
@@ -30,7 +31,13 @@ export default function Home() {
   };
 
   const day = today?.day || 1;
-  const progress = Math.round(((today?.completed_days?.length || 0) / 30) * 100);
+  const completedCount = today?.completed_days?.length || 0;
+  const gender = user?.profile?.gender;
+  const genderEmoji = gender === 'female' ? '👩' : gender === 'male' ? '👨' : '💪';
+  const quote = useMemo(() => {
+    const arr = MOTIVATION_QUOTES || ['Stay hard.'];
+    return arr[Math.floor(Math.random() * arr.length)];
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -40,7 +47,7 @@ export default function Home() {
       >
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.kicker}>HEY {user?.name?.toUpperCase()}</Text>
+            <Text style={styles.kicker}>{genderEmoji} HEY {user?.name?.toUpperCase()}</Text>
             <Text style={styles.title}>READY TO{'\n'}BURN?</Text>
           </View>
           <View style={styles.streakBox} testID="home-streak-counter">
@@ -50,18 +57,20 @@ export default function Home() {
           </View>
         </View>
 
+        <View style={styles.quoteBox} testID="home-motivation">
+          <Ionicons name="sparkles" size={16} color={COLORS.primary} />
+          <Text style={styles.quoteText}>"{quote}"</Text>
+        </View>
+
         <ImageBackground
           source={{ uri: 'https://images.unsplash.com/photo-1605296867724-fa87a8ef53fd?w=900' }}
           style={styles.hero}
         >
           <View style={styles.heroOverlay} />
           <View style={styles.heroContent}>
-            <Text style={styles.heroKicker}>DAY {day} / 30</Text>
+            <Text style={styles.heroKicker}>DAY {day} • {completedCount} WORKOUTS DONE</Text>
             <Text style={styles.heroTitle}>{today?.title || 'TODAY\'S WORKOUT'}</Text>
-            <View style={styles.progressBar} testID="home-progress-bar">
-              <View style={[styles.progressFill, { width: `${progress}%` }]} />
-            </View>
-            <Text style={styles.heroMeta}>{progress}% COMPLETE • {today?.estimated_minutes || 25} MIN</Text>
+            <Text style={styles.heroMeta}>{today?.estimated_minutes || 25} MIN • {today?.difficulty?.toUpperCase() || 'MEDIUM'} INTENSITY</Text>
             <TouchableOpacity
               testID="home-start-workout-btn"
               style={styles.heroCta}
@@ -124,16 +133,16 @@ const styles = StyleSheet.create({
   streakBox: { borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center', minWidth: 70, backgroundColor: COLORS.surface },
   streakNum: { color: COLORS.secondary, fontSize: 22, fontWeight: '900' },
   streakLbl: { color: COLORS.textDim, fontSize: 9, letterSpacing: 2, fontWeight: '800' },
-  hero: { marginTop: 24, minHeight: 240, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  hero: { marginTop: 16, minHeight: 220, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)' },
   heroContent: { padding: 20 },
   heroKicker: { color: COLORS.secondary, fontSize: 11, letterSpacing: 3, fontWeight: '900' },
   heroTitle: { color: '#fff', fontSize: 28, fontWeight: '900', letterSpacing: -0.5, marginTop: 6, lineHeight: 30 },
-  progressBar: { height: 6, backgroundColor: 'rgba(255,255,255,0.15)', marginTop: 18 },
-  progressFill: { height: '100%', backgroundColor: COLORS.primary },
-  heroMeta: { color: COLORS.textDim, fontSize: 11, letterSpacing: 2, marginTop: 10, fontWeight: '700' },
+  heroMeta: { color: COLORS.textDim, fontSize: 11, letterSpacing: 2, marginTop: 14, fontWeight: '700' },
   heroCta: { flexDirection: 'row', backgroundColor: COLORS.secondary, paddingVertical: 14, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
   heroCtaText: { color: '#000', fontWeight: '900', letterSpacing: 2 },
+  quoteBox: { flexDirection: 'row', gap: 10, alignItems: 'center', borderLeftWidth: 3, borderLeftColor: COLORS.primary, paddingVertical: 12, paddingHorizontal: 14, marginTop: 18, backgroundColor: COLORS.surface },
+  quoteText: { color: COLORS.text, fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 },
   statCard: { width: '48%', borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, padding: 16 },
   statValue: { color: COLORS.text, fontSize: 24, fontWeight: '900', marginTop: 8 },

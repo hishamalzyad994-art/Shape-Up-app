@@ -60,6 +60,33 @@ export default function Diet() {
           <Text style={styles.macroBmr}>BMR {macros?.bmr ?? '—'} • TDEE {macros?.tdee ?? '—'}</Text>
         </View>
 
+        {macros?.bmi && (
+          <View style={styles.bmiCard} testID="diet-bmi-card">
+            <View style={{ flex: 1 }}>
+              <Text style={styles.macroKicker}>BMI</Text>
+              <Text style={styles.bmiBig}>{macros.bmi}</Text>
+              <Text style={[
+                styles.bmiCat,
+                macros.bmi_category === 'normal' && { color: COLORS.success },
+                macros.bmi_category === 'over' && { color: '#F59E0B' },
+                macros.bmi_category === 'obese' && { color: COLORS.error },
+                macros.bmi_category === 'under' && { color: '#60A5FA' },
+              ]}>
+                {macros.bmi_category === 'under' && 'UNDERWEIGHT'}
+                {macros.bmi_category === 'normal' && 'NORMAL'}
+                {macros.bmi_category === 'over' && 'OVERWEIGHT'}
+                {macros.bmi_category === 'obese' && 'OBESE'}
+              </Text>
+            </View>
+            <View style={styles.bmiBar}>
+              <View style={[styles.bmiSeg, { backgroundColor: '#60A5FA' }]} />
+              <View style={[styles.bmiSeg, { backgroundColor: COLORS.success }]} />
+              <View style={[styles.bmiSeg, { backgroundColor: '#F59E0B' }]} />
+              <View style={[styles.bmiSeg, { backgroundColor: COLORS.error }]} />
+            </View>
+          </View>
+        )}
+
         <Text style={styles.sectionTitle}>CHOOSE PLAN</Text>
         <View style={styles.planTabs}>
           {['fat_loss', 'muscle_gain', 'healthy'].map(k => {
@@ -153,4 +180,9 @@ const styles = StyleSheet.create({
   tipBox: { flexDirection: 'row', gap: 14, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, padding: 16, marginTop: 24 },
   tipTitle: { color: COLORS.secondary, fontSize: 11, letterSpacing: 2, fontWeight: '900' },
   tipText: { color: COLORS.textDim, fontSize: 13, marginTop: 4, lineHeight: 18 },
+  bmiCard: { flexDirection: 'row', alignItems: 'center', gap: 16, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, padding: 20, marginTop: 12 },
+  bmiBig: { color: COLORS.secondary, fontSize: 44, fontWeight: '900', letterSpacing: -1.5, marginTop: 4 },
+  bmiCat: { fontSize: 12, letterSpacing: 2, fontWeight: '900', marginTop: 4 },
+  bmiBar: { flexDirection: 'column', gap: 4, flex: 1 },
+  bmiSeg: { height: 18 },
 });

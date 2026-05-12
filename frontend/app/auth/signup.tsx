@@ -40,7 +40,7 @@ export default function SignUp() {
             <Text style={styles.kicker}>JOIN THE CHALLENGE</Text>
             <Text style={styles.title}>START{'\n'}TODAY</Text>
             <View style={styles.accentBar} />
-            <Text style={styles.sub}>30 days. New you. No excuses.</Text>
+            <Text style={styles.sub}>Reshape your body. Reshape your life.</Text>
           </View>
 
           <View style={styles.form}>

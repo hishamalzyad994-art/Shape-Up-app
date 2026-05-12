@@ -28,18 +28,27 @@ const FOCUS = [
   { key: 'waist', label: 'Waist' },
   { key: 'full_body', label: 'Full Body' },
 ];
+const DIFFICULTIES = [
+  { key: 'easy', label: 'EASY', emoji: '🟢', desc: 'Just starting out' },
+  { key: 'medium', label: 'MEDIUM', emoji: '🟡', desc: 'Some experience' },
+  { key: 'hard', label: 'HARD', emoji: '🟠', desc: 'Regular trainer' },
+  { key: 'crazy', label: 'CRAZY', emoji: '🔴', desc: 'Push my limits' },
+];
 
 export default function Onboarding() {
-  const { api, refreshUser } = useAuth();
+  const { user, api, refreshUser } = useAuth();
   const router = useRouter();
-  const [gender, setGender] = useState<'male' | 'female' | ''>('');
-  const [age, setAge] = useState('');
-  const [height, setHeight] = useState('');
-  const [weight, setWeight] = useState('');
-  const [target, setTarget] = useState('');
-  const [goal, setGoal] = useState('');
-  const [activity, setActivity] = useState('moderate');
-  const [focus, setFocus] = useState<string[]>([]);
+  const p = user?.profile || {};
+  const [gender, setGender] = useState<'male' | 'female' | ''>(p.gender || '');
+  const [age, setAge] = useState(p.age?.toString() || '');
+  const [height, setHeight] = useState(p.height_cm?.toString() || '');
+  const [weight, setWeight] = useState(p.weight_kg?.toString() || '');
+  const [target, setTarget] = useState(p.target_weight_kg?.toString() || '');
+  const [goal, setGoal] = useState(p.goal || '');
+  const [activity, setActivity] = useState(p.activity || 'moderate');
+  const [focus, setFocus] = useState<string[]>(p.body_focus || []);
+  const [difficulty, setDifficulty] = useState(p.difficulty || 'medium');
+  const [reason, setReason] = useState(p.target_reason || '');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
 
@@ -62,6 +71,8 @@ export default function Onboarding() {
           target_weight_kg: target ? parseFloat(target) : null,
           goal,
           activity,
+          difficulty,
+          target_reason: reason || null,
           body_focus: focus.length ? focus : ['full_body'],
         }),
       });
@@ -82,17 +93,22 @@ export default function Onboarding() {
 
           <Text style={styles.label}>GENDER</Text>
           <View style={styles.row}>
-            {(['male', 'female'] as const).map(g => (
-              <TouchableOpacity
-                key={g}
-                testID={`onb-gender-${g}`}
-                style={[styles.chip, gender === g && styles.chipActive]}
-                onPress={() => setGender(g)}
-              >
-                <Ionicons name={g === 'male' ? 'man' : 'woman'} size={18} color={gender === g ? '#000' : COLORS.text} />
-                <Text style={[styles.chipText, gender === g && styles.chipTextActive]}>{g.toUpperCase()}</Text>
-              </TouchableOpacity>
-            ))}
+            <TouchableOpacity
+              testID="onb-gender-male"
+              style={[styles.genderChip, gender === 'male' && styles.chipActive]}
+              onPress={() => setGender('male')}
+            >
+              <Text style={styles.genderEmoji}>👨</Text>
+              <Text style={[styles.chipText, gender === 'male' && styles.chipTextActive]}>MALE</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="onb-gender-female"
+              style={[styles.genderChip, gender === 'female' && styles.chipActive]}
+              onPress={() => setGender('female')}
+            >
+              <Text style={styles.genderEmoji}>👩</Text>
+              <Text style={[styles.chipText, gender === 'female' && styles.chipTextActive]}>FEMALE</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.grid2}>
@@ -112,6 +128,34 @@ export default function Onboarding() {
               <Text style={styles.label}>TARGET (kg)</Text>
               <TextInput testID="onb-target" style={styles.input} value={target} onChangeText={setTarget} keyboardType="numeric" placeholder="72" placeholderTextColor={COLORS.textDim} />
             </View>
+          </View>
+
+          <Text style={styles.label}>WHY THIS TARGET? 💭</Text>
+          <Text style={styles.hint}>In one line — your fuel on tough days.</Text>
+          <TextInput
+            testID="onb-reason"
+            style={[styles.input, { marginTop: 8 }]}
+            value={reason}
+            onChangeText={setReason}
+            placeholder="e.g. To feel strong for my kids"
+            placeholderTextColor={COLORS.textDim}
+            multiline
+          />
+
+          <Text style={styles.label}>DIFFICULTY 🔥</Text>
+          <View style={styles.diffGrid}>
+            {DIFFICULTIES.map(d => (
+              <TouchableOpacity
+                key={d.key}
+                testID={`onb-difficulty-${d.key}`}
+                style={[styles.diffCell, difficulty === d.key && styles.diffCellActive]}
+                onPress={() => setDifficulty(d.key)}
+              >
+                <Text style={styles.diffEmoji}>{d.emoji}</Text>
+                <Text style={[styles.diffLabel, difficulty === d.key && { color: COLORS.primary }]}>{d.label}</Text>
+                <Text style={styles.diffDesc}>{d.desc}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           <Text style={styles.label}>GOAL</Text>
@@ -159,7 +203,7 @@ export default function Onboarding() {
           {err ? <Text style={styles.error}>{err}</Text> : null}
 
           <TouchableOpacity testID="onb-submit" style={styles.cta} onPress={submit} disabled={loading}>
-            {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.ctaText}>START 30-DAY CHALLENGE</Text>}
+            {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.ctaText}>START MY JOURNEY</Text>}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -174,12 +218,14 @@ const styles = StyleSheet.create({
   title: { color: COLORS.text, fontSize: 48, fontWeight: '900', letterSpacing: -1.5, lineHeight: 48, marginTop: 6 },
   accentBar: { width: 50, height: 4, backgroundColor: COLORS.primary, marginTop: 14, marginBottom: 20 },
   label: { color: COLORS.text, fontSize: 12, letterSpacing: 2, fontWeight: '900', marginTop: 22, marginBottom: 10 },
+  hint: { color: COLORS.textDim, fontSize: 11, marginTop: -6 },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 18, paddingVertical: 14,
+  genderChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 18, paddingVertical: 18,
     backgroundColor: COLORS.surface, flex: 1, justifyContent: 'center',
   },
+  genderEmoji: { fontSize: 28 },
   chipActive: { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
   chipText: { color: COLORS.text, fontWeight: '800', letterSpacing: 1.5 },
   chipTextActive: { color: '#000' },
@@ -189,6 +235,12 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface,
     color: COLORS.text, paddingHorizontal: 14, paddingVertical: 14, fontSize: 16, fontWeight: '700',
   },
+  diffGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  diffCell: { width: '48%', borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, padding: 14, alignItems: 'center' },
+  diffCellActive: { borderColor: COLORS.primary, borderWidth: 2 },
+  diffEmoji: { fontSize: 24, marginBottom: 4 },
+  diffLabel: { color: COLORS.text, fontWeight: '900', letterSpacing: 1.5, fontSize: 12 },
+  diffDesc: { color: COLORS.textDim, fontSize: 10, marginTop: 4, textAlign: 'center' },
   goalCard: {
     flex: 1, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface,
     padding: 14, alignItems: 'center', gap: 8,

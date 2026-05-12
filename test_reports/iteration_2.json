@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 2 ShapeUp E2E. Backend: 20/20 pytest cases pass (auth, profile w/ new fields difficulty+target_reason+language+whistle_enabled, calories+BMI, workouts/today scaling for easy/hard/crazy + gifs + no total_days, rate workout w/ validation, weekly progress, weights, Claude Sonnet 4.5 chat). Frontend: SHAPE UP branding live on login/signup; onboarding shows gender emoji, difficulty selector, WHY THIS TARGET field — all save. Workout tab: timer (00:00 → 00:02 working, start/stop/reset), exercises render with reps scaled by difficulty (Plank 58 sec on HARD, 45 sec on MEDIUM, 32 sec on EASY, 72 sec on CRAZY), complete opens 5-star rate modal which submits to /api/workouts/rate (200). Diet shows BMI card (25.9 OVERWEIGHT) with color band. Profile shows Weekly Progress placeholder + Settings (whistle + EN/AR). CRITICAL frontend bug found: Home (tabs/index.tsx) referenced 3 undefined variables (genderEmoji, quote, completedCount) causing red-screen on every signup. I applied a minimal definition fix so other tabs could be tested; main agent should review the fix and decide canonical implementation. CRITICAL content issue: ALL Tenor GIF URLs in EXERCISES_BY_FOCUS return HTTP 404 — exercise thumbnails show as black squares for users.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/workouts/today", "issue": "All exercise gif URLs (Tenor media.tenor.com/*) return HTTP 404. Verified directly via curl. Affects user-facing visual content."},
+      {"endpoint": "POST /api/chat", "issue": "Carried over from iteration_1 — system_message rebuilt every request; consider caching."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "app/(tabs)/index.tsx (Home)", "issue": "Used three undefined identifiers: `genderEmoji`, `quote`, `completedCount`. Caused immediate red-screen 'genderEmoji is not defined' on Home after onboarding. Applied minimal fix (declared variables) — please review and align with intended design.", "testID": "home-motivation,home-streak-counter", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Workout", "issues": ["Exercise GIF thumbnails are blank black squares because all media.tenor.com source URLs return 404. Need to either source new GIFs or use static exercise illustrations."]}
+    ],
+    "react_native_issues": [
+      {"component": "app/(tabs)/index.tsx", "issue": "useMemo with Math.random flagged by linter (purity rule) — works at runtime but should be moved into a stable selector or computed once on mount with state."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Review Home screen fix in /app/frontend/app/(tabs)/index.tsx (lines 33-40). Decide if genderEmoji/quote/completedCount values match intended design; my fix uses user.profile.gender → 👨/👩/💪, random pick from MOTIVATION_QUOTES, and today?.completed_days?.length.",
+    "Replace all broken Tenor GIF URLs in /app/backend/server.py EXERCISES_BY_FOCUS — every one returned HTTP 404 (verified for plank, mountain-climbers, russian-twist, bicycle-crunch, leg-raise; pattern suggests all are dead).",
+    "Optional polish: move Math.random out of useMemo to satisfy react-hooks/purity linter (e.g., useState + useEffect for quote index)."
+  ],
+  "critical_code_review_comments": [
+    "Home (app/(tabs)/index.tsx) shipped with three undefined variable references — would have caused 100% red-screen for every user. Suggests this iteration was not smoke-tested in the browser after editing. Recommend adding eslint no-undef as a CI gate before deploy.",
+    "Server EXERCISES_BY_FOCUS contains hardcoded third-party media URLs that are now all 404. Move to a static asset bundle or curated CDN.",
+    "PUT /api/profile still sets challenge_start on first partial update if core fields happen to merge to truthy — iteration_1 comment still applies."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (expanded to 20 tests with iteration-2 coverage)",
+    "/app/frontend/app/(tabs)/index.tsx (declared missing genderEmoji/quote/completedCount to unblock testing — REVIEW NEEDED)"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% on tested flows AFTER local fix to Home (signup, onboarding, home, workout timer/complete/rate, diet/BMI, profile/weekly/settings)"},
+  "seed_data_creation": "Each run registers fresh ui_<uuid>@cy.com / pass123 accounts; not cleaned up.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend public URL: EXPO_PUBLIC_BACKEND_URL. Run `pytest /app/backend/tests/backend_test.py -v`. Iteration-2 new tests cover difficulty scaling (easy 0.7×, medium 1.0×, hard 1.3×, crazy 1.6× — note 45*0.7≈31 due to float), BMI fields, /workouts/rate, /progress/weekly, and ensures no total_days field. Frontend testIDs added in iteration 1 still apply; workout has timer-start/stop/reset, workout-complete-btn, rate-star-N, self-star-N, rate-note, rate-submit. Home bug genderEmoji/quote/completedCount has a tester-applied patch — re-verify after main agent confirms direction.",
+  "rca_of_issue": "Home red-screen: developer added new JSX referencing {genderEmoji}, {completedCount}, and {quote} inside the render output but never declared them; the previous version computed only `progress`. No build-time check caught it (eslint not enforced). Tenor 404s: external CDN content removed — URLs hardcoded into backend rather than served from owned assets."
+}

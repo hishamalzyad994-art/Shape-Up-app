@@ -88,12 +88,22 @@ class ProfileUpdate(BaseModel):
     activity: Optional[Literal['sedentary', 'light', 'moderate', 'active', 'very_active']] = None
     goal: Optional[Literal['fat_loss', 'muscle_gain', 'healthy']] = None
     body_focus: Optional[List[str]] = None
+    difficulty: Optional[Literal['easy', 'medium', 'hard', 'crazy']] = None
+    target_reason: Optional[str] = None
+    language: Optional[Literal['en', 'ar']] = None
+    whistle_enabled: Optional[bool] = None
 
 class WeightLog(BaseModel):
     weight_kg: float
 
 class CompleteDayRequest(BaseModel):
     day: int
+
+class RateWorkoutRequest(BaseModel):
+    day: int
+    rating: int = Field(..., ge=1, le=5)
+    self_score: Optional[int] = Field(None, ge=1, le=5)
+    note: Optional[str] = None
 
 class ChatRequest(BaseModel):
     message: str
@@ -141,46 +151,58 @@ def compute_bmr_tdee(profile: dict):
 # ------------ Static content: exercises & meals ------------
 EXERCISES_BY_FOCUS = {
     "belly": [
-        {"name": "Plank", "sets": 3, "reps": "45 sec", "icon": "timer-outline"},
-        {"name": "Mountain Climbers", "sets": 3, "reps": "20", "icon": "flash-outline"},
-        {"name": "Russian Twists", "sets": 3, "reps": "30", "icon": "sync-outline"},
-        {"name": "Bicycle Crunches", "sets": 3, "reps": "20", "icon": "bicycle-outline"},
-        {"name": "Leg Raises", "sets": 3, "reps": "15", "icon": "arrow-up-outline"},
+        {"name": "Plank", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "gif": "https://media.tenor.com/0zG9_v01rXEAAAAi/plank-exercise.gif"},
+        {"name": "Mountain Climbers", "sets": 3, "reps": 20, "unit": "reps", "icon": "flash-outline", "gif": "https://media.tenor.com/X-7zT3PUiPYAAAAi/mountain-climbers.gif"},
+        {"name": "Russian Twists", "sets": 3, "reps": 30, "unit": "reps", "icon": "sync-outline", "gif": "https://media.tenor.com/I8_axDdrntoAAAAi/russian-twist.gif"},
+        {"name": "Bicycle Crunches", "sets": 3, "reps": 20, "unit": "reps", "icon": "bicycle-outline", "gif": "https://media.tenor.com/dRtkB6JpEoAAAAAi/bicycle-crunch.gif"},
+        {"name": "Leg Raises", "sets": 3, "reps": 15, "unit": "reps", "icon": "arrow-up-outline", "gif": "https://media.tenor.com/T_HXqVF7tcsAAAAi/leg-raise.gif"},
     ],
     "chest": [
-        {"name": "Push Ups", "sets": 4, "reps": "15", "icon": "fitness-outline"},
-        {"name": "Incline Push Ups", "sets": 3, "reps": "12", "icon": "trending-up-outline"},
-        {"name": "Diamond Push Ups", "sets": 3, "reps": "10", "icon": "diamond-outline"},
-        {"name": "Chest Dips", "sets": 3, "reps": "12", "icon": "arrow-down-outline"},
+        {"name": "Push Ups", "sets": 4, "reps": 15, "unit": "reps", "icon": "fitness-outline", "gif": "https://media.tenor.com/UMl7iEdvSh4AAAAi/push-ups.gif"},
+        {"name": "Incline Push Ups", "sets": 3, "reps": 12, "unit": "reps", "icon": "trending-up-outline", "gif": "https://media.tenor.com/2lk1KhpUH9oAAAAi/incline-push-up.gif"},
+        {"name": "Diamond Push Ups", "sets": 3, "reps": 10, "unit": "reps", "icon": "diamond-outline", "gif": "https://media.tenor.com/Rqp0FAHvxxIAAAAi/diamond-push-up.gif"},
+        {"name": "Chest Dips", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-down-outline", "gif": "https://media.tenor.com/G4cKbS3xEbgAAAAi/chest-dip.gif"},
     ],
     "arms": [
-        {"name": "Bicep Curls", "sets": 4, "reps": "12", "icon": "barbell-outline"},
-        {"name": "Tricep Dips", "sets": 3, "reps": "15", "icon": "arrow-down-outline"},
-        {"name": "Hammer Curls", "sets": 3, "reps": "12", "icon": "barbell-outline"},
-        {"name": "Pike Push Ups", "sets": 3, "reps": "10", "icon": "fitness-outline"},
+        {"name": "Bicep Curls", "sets": 4, "reps": 12, "unit": "reps", "icon": "barbell-outline", "gif": "https://media.tenor.com/8u-eLY9Z1lwAAAAi/bicep-curl.gif"},
+        {"name": "Tricep Dips", "sets": 3, "reps": 15, "unit": "reps", "icon": "arrow-down-outline", "gif": "https://media.tenor.com/4dSnsZbPbtMAAAAi/tricep-dip.gif"},
+        {"name": "Hammer Curls", "sets": 3, "reps": 12, "unit": "reps", "icon": "barbell-outline", "gif": "https://media.tenor.com/QbW1POuFKL4AAAAi/hammer-curl.gif"},
+        {"name": "Pike Push Ups", "sets": 3, "reps": 10, "unit": "reps", "icon": "fitness-outline", "gif": "https://media.tenor.com/dvhnQH40hcgAAAAi/pike-push-up.gif"},
     ],
     "legs": [
-        {"name": "Squats", "sets": 4, "reps": "20", "icon": "body-outline"},
-        {"name": "Lunges", "sets": 3, "reps": "12 each", "icon": "walk-outline"},
-        {"name": "Jump Squats", "sets": 3, "reps": "15", "icon": "flash-outline"},
-        {"name": "Wall Sit", "sets": 3, "reps": "45 sec", "icon": "timer-outline"},
-        {"name": "Calf Raises", "sets": 3, "reps": "20", "icon": "arrow-up-outline"},
+        {"name": "Squats", "sets": 4, "reps": 20, "unit": "reps", "icon": "body-outline", "gif": "https://media.tenor.com/zUDxV5LpkxsAAAAi/squat.gif"},
+        {"name": "Lunges", "sets": 3, "reps": 12, "unit": "each", "icon": "walk-outline", "gif": "https://media.tenor.com/cYsxOQk-_jcAAAAi/lunge.gif"},
+        {"name": "Jump Squats", "sets": 3, "reps": 15, "unit": "reps", "icon": "flash-outline", "gif": "https://media.tenor.com/4qB9OvtKlhEAAAAi/jump-squat.gif"},
+        {"name": "Wall Sit", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "gif": "https://media.tenor.com/wfPJ4MaDDB8AAAAi/wall-sit.gif"},
+        {"name": "Calf Raises", "sets": 3, "reps": 20, "unit": "reps", "icon": "arrow-up-outline", "gif": "https://media.tenor.com/ND8HqIhX2WAAAAAi/calf-raise.gif"},
     ],
     "waist": [
-        {"name": "Side Plank", "sets": 3, "reps": "30 sec each", "icon": "timer-outline"},
-        {"name": "Standing Side Crunches", "sets": 3, "reps": "20", "icon": "swap-horizontal-outline"},
-        {"name": "Wood Choppers", "sets": 3, "reps": "12 each", "icon": "leaf-outline"},
-        {"name": "Russian Twists", "sets": 3, "reps": "30", "icon": "sync-outline"},
+        {"name": "Side Plank", "sets": 3, "reps": 30, "unit": "sec each", "icon": "timer-outline", "gif": "https://media.tenor.com/JqVPaP_dHO0AAAAi/side-plank.gif"},
+        {"name": "Standing Side Crunches", "sets": 3, "reps": 20, "unit": "reps", "icon": "swap-horizontal-outline", "gif": "https://media.tenor.com/HzpDLNJWB4MAAAAi/side-crunch.gif"},
+        {"name": "Wood Choppers", "sets": 3, "reps": 12, "unit": "each", "icon": "leaf-outline", "gif": "https://media.tenor.com/3uoCpC0nJWMAAAAi/wood-chopper.gif"},
+        {"name": "Russian Twists", "sets": 3, "reps": 30, "unit": "reps", "icon": "sync-outline", "gif": "https://media.tenor.com/I8_axDdrntoAAAAi/russian-twist.gif"},
     ],
     "full_body": [
-        {"name": "Burpees", "sets": 3, "reps": "12", "icon": "flame-outline"},
-        {"name": "Jumping Jacks", "sets": 3, "reps": "30", "icon": "expand-outline"},
-        {"name": "Push Ups", "sets": 3, "reps": "15", "icon": "fitness-outline"},
-        {"name": "Squats", "sets": 3, "reps": "20", "icon": "body-outline"},
-        {"name": "Plank", "sets": 3, "reps": "45 sec", "icon": "timer-outline"},
-        {"name": "Mountain Climbers", "sets": 3, "reps": "20", "icon": "flash-outline"},
+        {"name": "Burpees", "sets": 3, "reps": 12, "unit": "reps", "icon": "flame-outline", "gif": "https://media.tenor.com/RR59n2VnxJ8AAAAi/burpee.gif"},
+        {"name": "Jumping Jacks", "sets": 3, "reps": 30, "unit": "reps", "icon": "expand-outline", "gif": "https://media.tenor.com/y3OL5JtCKWcAAAAi/jumping-jacks.gif"},
+        {"name": "Push Ups", "sets": 3, "reps": 15, "unit": "reps", "icon": "fitness-outline", "gif": "https://media.tenor.com/UMl7iEdvSh4AAAAi/push-ups.gif"},
+        {"name": "Squats", "sets": 3, "reps": 20, "unit": "reps", "icon": "body-outline", "gif": "https://media.tenor.com/zUDxV5LpkxsAAAAi/squat.gif"},
+        {"name": "Plank", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "gif": "https://media.tenor.com/0zG9_v01rXEAAAAi/plank-exercise.gif"},
+        {"name": "Mountain Climbers", "sets": 3, "reps": 20, "unit": "reps", "icon": "flash-outline", "gif": "https://media.tenor.com/X-7zT3PUiPYAAAAi/mountain-climbers.gif"},
     ],
 }
+
+DIFFICULTY_MULT = {"easy": 0.7, "medium": 1.0, "hard": 1.3, "crazy": 1.6}
+
+def scale_exercises(exercises, difficulty):
+    mult = DIFFICULTY_MULT.get(difficulty, 1.0)
+    out = []
+    for e in exercises:
+        scaled = dict(e)
+        scaled["sets"] = max(2, round(e["sets"] * (0.85 + mult * 0.15)))
+        scaled["reps"] = max(5, round(e["reps"] * mult))
+        out.append(scaled)
+    return out
 
 MEAL_PLANS = {
     "fat_loss": {
@@ -275,7 +297,9 @@ async def update_profile(req: ProfileUpdate, user=Depends(get_current_user)):
     # If challenge not started yet, start it on first profile completion
     set_doc = dict(update)
     user_full = await db.users.find_one({"id": user["id"]}, {"_id": 0})
-    if not user_full.get("challenge_start"):
+    merged_profile = {**(user_full.get("profile") or {}), **req.dict(exclude_none=True)}
+    has_core = all(merged_profile.get(k) for k in ("age", "gender", "height_cm", "weight_kg", "goal"))
+    if not user_full.get("challenge_start") and has_core:
         set_doc["challenge_start"] = now_utc().isoformat()
     await db.users.update_one({"id": user["id"]}, {"$set": set_doc})
     fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password": 0})
@@ -285,9 +309,25 @@ async def update_profile(req: ProfileUpdate, user=Depends(get_current_user)):
 
 @api_router.get("/calories")
 async def calories(user=Depends(get_current_user)):
-    macros = compute_bmr_tdee(user.get("profile", {}))
+    profile = user.get("profile", {}) or {}
+    macros = compute_bmr_tdee(profile)
     if not macros:
         raise HTTPException(status_code=400, detail="Complete your profile first")
+    # BMI
+    h = profile.get("height_cm")
+    w = profile.get("weight_kg")
+    if h and w:
+        bmi = round(w / ((h / 100) ** 2), 1)
+        if bmi < 18.5:
+            cat = "under"
+        elif bmi < 25:
+            cat = "normal"
+        elif bmi < 30:
+            cat = "over"
+        else:
+            cat = "obese"
+        macros["bmi"] = bmi
+        macros["bmi_category"] = cat
     return macros
 
 
@@ -296,27 +336,75 @@ async def workout_today(user=Depends(get_current_user)):
     profile = user.get("profile", {}) or {}
     focus_list = profile.get("body_focus") or ["full_body"]
     focus = focus_list[0] if focus_list else "full_body"
-    exercises = EXERCISES_BY_FOCUS.get(focus, EXERCISES_BY_FOCUS["full_body"])
-    # Determine current day
+    difficulty = profile.get("difficulty", "medium")
+    exercises = scale_exercises(EXERCISES_BY_FOCUS.get(focus, EXERCISES_BY_FOCUS["full_body"]), difficulty)
+    # Ongoing day counter (no cap)
     start = user.get("challenge_start")
     day = 1
     if start:
         try:
             start_dt = datetime.fromisoformat(start)
             delta = (now_utc() - start_dt).days
-            day = min(max(delta + 1, 1), 30)
+            day = max(delta + 1, 1)
         except Exception:
             pass
     return {
         "day": day,
-        "total_days": 30,
         "focus": focus,
-        "title": f"Day {day} • {focus.replace('_', ' ').title()} Burn",
+        "difficulty": difficulty,
+        "title": f"Day {day} • {focus.replace('_', ' ').title()}",
         "exercises": exercises,
-        "estimated_minutes": 25,
+        "estimated_minutes": int(20 + len(exercises) * 2 * DIFFICULTY_MULT.get(difficulty, 1.0)),
         "completed_days": user.get("completed_days", []),
         "streak": user.get("streak", 0),
     }
+
+
+@api_router.post("/workouts/rate")
+async def rate_workout(req: RateWorkoutRequest, user=Depends(get_current_user)):
+    entry = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "day": req.day,
+        "rating": req.rating,
+        "self_score": req.self_score,
+        "note": req.note,
+        "logged_at": now_utc().isoformat(),
+    }
+    await db.workout_ratings.insert_one(entry)
+    entry.pop("_id", None)
+    return entry
+
+
+@api_router.get("/progress/weekly")
+async def weekly_progress(user=Depends(get_current_user)):
+    logs = await db.weight_logs.find({"user_id": user["id"]}, {"_id": 0}).sort("logged_at", 1).to_list(1000)
+    if not logs:
+        return {"weeks": []}
+    start = datetime.fromisoformat(logs[0]["logged_at"])
+    buckets: dict = {}
+    for l in logs:
+        dt = datetime.fromisoformat(l["logged_at"])
+        wk = (dt - start).days // 7
+        buckets.setdefault(wk, []).append(l["weight_kg"])
+    weeks = []
+    prev_weight = None
+    first_weight = logs[0]["weight_kg"]
+    for wk in sorted(buckets.keys()):
+        avg = round(sum(buckets[wk]) / len(buckets[wk]), 1)
+        delta = round(avg - prev_weight, 1) if prev_weight is not None else 0.0
+        total_lost = round(first_weight - avg, 1)
+        # rough fat-loss estimate (75% of weight lost is fat in caloric deficit)
+        fat_loss = round(max(0.0, total_lost) * 0.75, 1)
+        weeks.append({
+            "week": wk + 1,
+            "avg_weight": avg,
+            "delta": delta,
+            "total_lost": total_lost,
+            "fat_loss_est": fat_loss,
+        })
+        prev_weight = avg
+    return {"weeks": weeks}
 
 
 @api_router.post("/workouts/complete")
@@ -378,20 +466,11 @@ async def chat(req: ChatRequest, user=Depends(get_current_user)):
         system_message=sys,
     ).with_model("anthropic", "claude-sonnet-4-5-20250929")
 
-    # Replay short history (last 10 msgs) so multi-turn works statelessly
-    history = await db.chat_history.find({"user_id": user["id"]}, {"_id": 0}).sort("ts", 1).to_list(20)
-    for h in history[-10:]:
-        try:
-            if h["role"] == "user":
-                await chat_client.send_message(UserMessage(text=h["text"]))
-        except Exception:
-            pass
-
     try:
         reply = await chat_client.send_message(UserMessage(text=req.message))
-    except Exception as e:
+    except Exception:
         logging.exception("LLM error")
-        raise HTTPException(status_code=500, detail=f"AI coach unavailable: {e}")
+        raise HTTPException(status_code=500, detail="AI coach is temporarily unavailable. Please try again.")
 
     ts = now_utc().isoformat()
     await db.chat_history.insert_many([
