@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 5 (auto-renewing monthly + cancel). Backend 11/11 PASS via new /app/backend/tests/test_iter5_autorenew.py. Verified: /subscription/plans now exposes recurring boolean (monthly=true, sixmonths/yearly=false); POST /subscription/checkout with plan=monthly returns recurring=true and a real https://checkout.stripe.com URL (Stripe subscription mode with inline price_data + customer_email — confirmed in backend stripe logs returning 200); plan=sixmonths and plan=yearly return recurring=false and create one-off sessions via emergentintegrations; POST /subscription/cancel correctly returns 404 'No auto-renewing subscription to cancel' for a user without an active auto-renewing sub; GET /subscription/status now includes auto_renew and cancel_at_period_end boolean fields (both False for fresh user); paywall enforcement still gates /workouts/today, /meals/plans, /chat with 402. Frontend: /subscribe screen renders AUTO-RENEW badge on monthly card (yellow on top-right) and BEST VALUE badge on yearly. Cancel-subscription-btn is correctly hidden when there is no active sub. Subscribe-btn visible. Did NOT complete a real Stripe payment per the iter5 brief so the post-payment branch (auto_renew=true→cancel button appears) is NOT exercised end-to-end. Patched one missing piece: legal footer in /app/frontend/app/subscribe.tsx still showed the old 'One-time payment • No auto-renewal' copy — updated to the iter5 string 'Monthly plan auto-renews until you cancel • 6-month & yearly are one-off payments'. After expo restart the new copy renders and DOM check confirms old string is gone.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/subscription/checkout", "issue": "server.py has TWO @api_router.post('/subscription/checkout') definitions: the iter5 version (lines 572-633) with recurring/auto-renew support, AND a leftover iter3 version (lines 673-700) that only handles one-off payments and lacks the 'recurring' field. FastAPI keeps the first registered route so the auto-renew version wins (verified by tests), but the duplicate is dead code that will confuse future readers and is a footgun if anyone re-orders the file. Remove lines 673-700."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "/app/frontend/app/subscribe.tsx", "issue": "Legal footer string was not updated for iter5 — it still read 'One-time payment • No auto-renewal • Cards processed securely by Stripe', which contradicts the new auto-renew monthly plan. PATCHED in this iteration to 'Monthly plan auto-renews until you cancel • 6-month & yearly are one-off payments'.", "testID": "n/a", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/subscribe", "issues": ["AUTO-RENEW badge on monthly card uses bestBadge style positioned top:-10 right:12. On the FIRST card in the list (monthly) this badge can render visually adjacent to the 'CHOOSE YOUR PLAN' section header; consider extra top margin on the first card or moving the badge inline."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter5_autorenew.py",
+    "/app/test_reports/pytest/iter5_autorenew.xml"
+  ],
+  "action_items": [
+    "Remove the duplicate /subscription/checkout route (server.py lines 673-700). The earlier definition (lines 572-633) is the one currently serving requests and is correct.",
+    "End-to-end cancel flow was NOT exercised because completing a real Stripe payment is forbidden. Main agent should grant a test user a fake auto-renewing subscription (db.users.update({email:'test@cy.com'}, {$set:{subscription:{plan:'monthly', access_expires_at:<future ISO>, auto_renew:true, cancel_at_period_end:false, stripe_subscription_id:'sub_test_dummy', last_payment_status:'paid'}}})) and then verify: (a) sub-active-card renders, (b) CANCEL SUBSCRIPTION button is visible, (c) tapping it calls POST /subscription/cancel (will 500 with 'No such subscription' on dummy ID but the request shape is what matters), (d) refreshed status shows cancel_at_period_end=true and the UI now hides the cancel button + shows 'Cancellation scheduled — no further charges.'",
+    "Carry-over: emergent Stripe proxy 404 race in /subscription/poll/{session_id} — backend already retries 4× with backoff but no webhook fallback.",
+    "Carry-over: PLAN_CONFIG dict is still duplicated as an inlined list in subscription_plans() — DRY fix.",
+    "Carry-over: subscribe.tsx poll loop still swallows errors silently — add Alert on persistent 404."
+  ],
+  "critical_code_review_comments": [
+    "DUPLICATE FUNCTION DEFINITION: server.py defines `async def subscription_checkout` twice (lines 572 and 673). Python keeps the second function object reference, but @api_router.post was already evaluated at the first definition so FastAPI's route table has BOTH entries. The first match wins — but this is brittle and almost certainly an unintentional merge leftover from iter3→iter5.",
+    "server.py is now 813 lines and mixes auth, profile, workouts, meals, chat, subscriptions, and Stripe webhook logic. Split into routers/auth.py, routers/workouts.py, routers/subscriptions.py once stable.",
+    "/api/subscription/cancel does NOT verify the subscription is still active before calling stripe.Subscription.modify — if access_expires_at has already passed, the call still goes to Stripe. Cheap to guard.",
+    "subscribe.tsx scheduleDailyReminder still only fires on the post-poll success path; users who paid in another session and arrive at /(tabs) directly never get reminders scheduled. Move to refreshSubscription when active flips true."
+  ],
+  "updated_files": [
+    "/app/frontend/app/subscribe.tsx (legal footer copy updated to iter5 wording)",
+    "/app/backend/tests/test_iter5_autorenew.py (NEW — 11 tests covering recurring flag, monthly/sixmonths/yearly checkout shapes, cancel 404, status fields, paywall regression)",
+    "/app/test_reports/pytest/iter5_autorenew.xml"
+  ],
+  "success_rate": {"backend": "100% (11/11 iter5 tests passed)", "frontend": "100% on observable surface — AUTO-RENEW + BEST VALUE badges render, new legal footer renders, cancel button correctly hidden without active sub. Active-sub branch (cancel button visible + cancel-flow alert) NOT exercised end-to-end (requires paid sub)."},
+  "seed_data_creation": "Registered fresh iter5_<hex>@cy.com / pass123 for the pytest run; not cleaned up.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_iter5_autorenew.py -v`. Frontend changes need `sudo supervisorctl restart expo` to pick up because Metro is in CI mode (no watch). To verify the active-sub branch without Stripe: manually insert a subscription doc with auto_renew:true and cancel_at_period_end:false into the test@cy.com user (see action item #2 for the exact mongo update), then load /subscribe and check for testID='sub-active-card' and testID='cancel-subscription-btn'.",
+  "rca_of_issue": "The iter5 brief asked for the legal footer copy to change, but /app/frontend/app/subscribe.tsx lines 224-226 still carried the old iter3 string. Fixed in this iteration. Also detected a duplicate route definition in server.py that is functionally harmless today (first registration wins) but is a latent bug — flagged in action_items for main-agent cleanup."
+}

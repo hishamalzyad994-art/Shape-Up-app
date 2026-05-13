@@ -116,11 +116,42 @@ export default function Subscribe() {
             <Text style={styles.activeTitle}>YOU'RE PRO ✨</Text>
             <Text style={styles.activeText}>
               Plan: <Text style={{ color: COLORS.secondary, fontWeight: '900' }}>{status.plan?.toUpperCase()}</Text>
-              {'\n'}Access until <Text style={{ color: COLORS.text, fontWeight: '900' }}>{expiresStr}</Text>
+              {'\n'}{status.auto_renew && !status.cancel_at_period_end
+                ? <>Renews on <Text style={{ color: COLORS.text, fontWeight: '900' }}>{expiresStr}</Text></>
+                : <>Access until <Text style={{ color: COLORS.text, fontWeight: '900' }}>{expiresStr}</Text></>}
+              {status.cancel_at_period_end && (
+                <>{'\n'}<Text style={{ color: '#F59E0B' }}>Cancellation scheduled — no further charges.</Text></>
+              )}
             </Text>
             <TouchableOpacity style={styles.continueBtn} onPress={() => router.replace('/(tabs)')}>
               <Text style={styles.continueBtnText}>BACK TO APP</Text>
             </TouchableOpacity>
+            {status.auto_renew && !status.cancel_at_period_end && (
+              <TouchableOpacity
+                testID="cancel-subscription-btn"
+                style={styles.cancelBtn}
+                onPress={() => {
+                  Alert.alert(
+                    'Cancel subscription?',
+                    `You'll keep access until ${expiresStr}. No further charges.`,
+                    [
+                      { text: 'Keep it', style: 'cancel' },
+                      { text: 'Cancel', style: 'destructive', onPress: async () => {
+                        try {
+                          await api('/subscription/cancel', { method: 'POST' });
+                          await load();
+                          Alert.alert('Subscription cancelled', `No further charges. Access stays until ${expiresStr}.`);
+                        } catch (e: any) {
+                          Alert.alert('Error', e.message || 'Cancel failed');
+                        }
+                      }},
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.cancelBtnText}>CANCEL SUBSCRIPTION</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : null}
 
@@ -142,7 +173,7 @@ export default function Subscribe() {
         <Text style={styles.sectionLbl}>CHOOSE YOUR PLAN</Text>
         {plans.map(p => {
           const isYearly = p.key === 'yearly';
-          const isSix = p.key === 'sixmonths';
+          const isMonthly = p.key === 'monthly';
           const highlight = isYearly;
           return (
             <TouchableOpacity
@@ -155,6 +186,11 @@ export default function Subscribe() {
               {highlight && (
                 <View style={styles.bestBadge}>
                   <Text style={styles.bestText}>BEST VALUE</Text>
+                </View>
+              )}
+              {isMonthly && (
+                <View style={[styles.bestBadge, { backgroundColor: COLORS.secondary }]}>
+                  <Text style={[styles.bestText, { color: '#000' }]}>AUTO-RENEW</Text>
                 </View>
               )}
               <View style={styles.planLeft}>
@@ -186,7 +222,7 @@ export default function Subscribe() {
         </TouchableOpacity>
 
         <Text style={styles.legal}>
-          One-time payment • No auto-renewal • Cards processed securely by Stripe
+          Monthly plan auto-renews until you cancel • 6-month & yearly are one-off payments
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -216,6 +252,8 @@ const styles = StyleSheet.create({
   activeText: { color: COLORS.textDim, fontSize: 14, textAlign: 'center', marginTop: 10, lineHeight: 22 },
   continueBtn: { backgroundColor: COLORS.secondary, paddingVertical: 12, paddingHorizontal: 30, marginTop: 16 },
   continueBtnText: { color: '#000', fontWeight: '900', letterSpacing: 2 },
+  cancelBtn: { borderWidth: 1, borderColor: COLORS.error, paddingVertical: 10, paddingHorizontal: 24, marginTop: 12 },
+  cancelBtnText: { color: COLORS.error, fontWeight: '900', letterSpacing: 2, fontSize: 12 },
   pollingBox: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.secondary, padding: 14, marginBottom: 16 },
   pollingText: { color: COLORS.text, fontWeight: '800' },
   benefits: { marginBottom: 24 },
