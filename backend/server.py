@@ -670,36 +670,6 @@ async def subscription_status(user=Depends(get_current_user)):
     }
 
 
-@api_router.post("/subscription/checkout")
-async def subscription_checkout(req: CheckoutRequest, user=Depends(get_current_user)):
-    if not stripe_checkout:
-        raise HTTPException(status_code=500, detail="Stripe not configured")
-    cfg = PLAN_CONFIG[req.plan]
-    origin = (req.origin_url or APP_BASE_URL).rstrip('/')
-    success_url = f"{origin}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{origin}/subscription/cancelled"
-    payment_req = CheckoutSessionRequest(
-        amount=cfg["amount"],
-        currency="gbp",
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata={"user_id": user["id"], "plan": req.plan, "days": str(cfg["days"]), "email": user["email"]},
-    )
-    session = await stripe_checkout.create_checkout_session(payment_req)
-    # Record pending payment
-    await db.payments.insert_one({
-        "id": str(uuid.uuid4()),
-        "user_id": user["id"],
-        "session_id": session.session_id,
-        "plan": req.plan,
-        "amount": cfg["amount"],
-        "currency": "gbp",
-        "payment_status": "pending",
-        "created_at": now_utc().isoformat(),
-    })
-    return {"url": session.url, "session_id": session.session_id, "plan": req.plan, "display": cfg["display"]}
-
-
 @api_router.get("/subscription/poll/{session_id}")
 async def subscription_poll(session_id: str, user=Depends(get_current_user)):
     """Frontend polls this after redirecting back from Stripe.
