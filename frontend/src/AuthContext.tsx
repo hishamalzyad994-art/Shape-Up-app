@@ -103,6 +103,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem('user', JSON.stringify(data.user));
     setToken(data.token);
     setUser(data.user);
+    // Fire-and-forget subscription refresh so index.tsx routing has fresh data
+    setTimeout(() => { refreshSubscription().catch(() => {}); }, 0);
   };
 
   const signUp = async (email: string, password: string, name: string) => {
