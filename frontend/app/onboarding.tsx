@@ -77,7 +77,7 @@ export default function Onboarding() {
         }),
       });
       await refreshUser();
-      router.replace('/(tabs)');
+      router.replace('/subscribe');
     } catch (e: any) {
       setErr(e.message || 'Could not save profile');
     } finally { setLoading(false); }

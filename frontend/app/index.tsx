@@ -1,21 +1,34 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth, COLORS } from '../src/AuthContext';
 
 export default function Index() {
-  const { user, loading } = useAuth();
+  const { user, loading, refreshSubscription } = useAuth();
   const router = useRouter();
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     if (loading) return;
-    if (!user) {
-      router.replace('/auth/login');
-    } else if (!user.profile?.age || !user.profile?.gender) {
-      router.replace('/onboarding');
-    } else {
-      router.replace('/(tabs)');
-    }
+    (async () => {
+      if (!user) {
+        router.replace('/auth/login');
+        return;
+      }
+      if (!user.profile?.age || !user.profile?.gender) {
+        router.replace('/onboarding');
+        return;
+      }
+      // Profile complete → check subscription
+      setChecking(true);
+      const sub = await refreshSubscription();
+      setChecking(false);
+      if (sub?.active) {
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/subscribe');
+      }
+    })();
   }, [user, loading]);
 
   return (

@@ -42,8 +42,13 @@ export default function Subscribe() {
         if (r.payment_status === 'paid') {
           await refreshUser();
           await load();
+          // Schedule daily workout reminder once user has paid
+          try {
+            const { scheduleDailyReminder } = await import('../src/notifications');
+            await scheduleDailyReminder(9, 0);
+          } catch (_) {}
           setPolling(false);
-          Alert.alert('🎉 SUCCESS', `Access granted!\nValid until ${new Date(r.access_expires_at).toLocaleDateString()}`,
+          Alert.alert('🎉 SUCCESS', `Access granted!\nValid until ${new Date(r.access_expires_at).toLocaleDateString()}\n\nDaily workout reminders are now ON.`,
             [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }]);
           return;
         }

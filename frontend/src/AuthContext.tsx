@@ -13,14 +13,25 @@ type User = {
   completed_days?: number[];
 };
 
+type SubscriptionStatus = {
+  active: boolean;
+  plan?: string | null;
+  amount?: number | null;
+  purchased_at?: string | null;
+  access_expires_at?: string | null;
+  last_payment_status?: string | null;
+};
+
 type AuthCtx = {
   user: User | null;
   token: string | null;
   loading: boolean;
+  subscription: SubscriptionStatus | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  refreshSubscription: () => Promise<SubscriptionStatus | null>;
   api: <T = any>(path: string, opts?: RequestInit) => Promise<T>;
 };
 
@@ -30,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
 
   const api = useCallback(async <T,>(path: string, opts: RequestInit = {}): Promise<T> => {
     const stored = token || (await AsyncStorage.getItem('token'));
@@ -54,6 +66,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.multiRemove(['token', 'user']);
       setToken(null);
       setUser(null);
+    }
+  }, [api]);
+
+  const refreshSubscription = useCallback(async (): Promise<SubscriptionStatus | null> => {
+    try {
+      const s = await api<SubscriptionStatus>('/subscription/status');
+      setSubscription(s);
+      await AsyncStorage.setItem('subscription', JSON.stringify(s));
+      return s;
+    } catch (_) {
+      setSubscription(null);
+      return null;
     }
   }, [api]);
 
@@ -96,13 +120,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    await AsyncStorage.multiRemove(['token', 'user']);
+    await AsyncStorage.multiRemove(['token', 'user', 'subscription']);
     setToken(null);
     setUser(null);
+    setSubscription(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, signIn, signUp, signOut, refreshUser, api }}>
+    <AuthContext.Provider value={{ user, token, loading, subscription, signIn, signUp, signOut, refreshUser, refreshSubscription, api }}>
       {children}
     </AuthContext.Provider>
   );

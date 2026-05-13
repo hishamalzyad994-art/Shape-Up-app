@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, COLORS } from '../../src/AuthContext';
 import { LANGUAGES } from '../../src/i18n';
+import { isReminderEnabled, setReminderEnabled } from '../../src/notifications';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Profile() {
@@ -15,6 +16,16 @@ export default function Profile() {
   const [logs, setLogs] = useState<any[]>([]);
   const [weeks, setWeeks] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [remindersOn, setRemindersOn] = useState(true);
+
+  useEffect(() => { (async () => setRemindersOn(await isReminderEnabled()))(); }, []);
+
+  const toggleReminders = async (val: boolean) => {
+    setRemindersOn(val);
+    await setReminderEnabled(val);
+    Alert.alert(val ? '🔔 Reminders ON' : 'Reminders OFF',
+      val ? "We'll nudge you daily at 9:00 AM." : "You won't get daily nudges.");
+  };
 
   const load = useCallback(async () => {
     try {
@@ -172,6 +183,19 @@ export default function Profile() {
 
         <Text style={styles.sectionTitle}>SETTINGS ⚙️</Text>
         <View style={styles.settingsCard}>
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingTitle}>DAILY WORKOUT REMINDER</Text>
+              <Text style={styles.settingDesc}>Notification at 9:00 AM every day</Text>
+            </View>
+            <Switch
+              testID="setting-reminders"
+              value={remindersOn}
+              onValueChange={toggleReminders}
+              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+              thumbColor={remindersOn ? COLORS.secondary : '#888'}
+            />
+          </View>
           <View style={styles.settingRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.settingTitle}>WHISTLE SOUND</Text>

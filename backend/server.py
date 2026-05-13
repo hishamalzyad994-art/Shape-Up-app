@@ -76,6 +76,26 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return user
 
 
+def _user_has_active_subscription(user: dict) -> bool:
+    sub = user.get("subscription") if user else None
+    if not sub:
+        return False
+    expires = sub.get("access_expires_at")
+    if not expires:
+        return False
+    try:
+        return datetime.fromisoformat(expires) > now_utc()
+    except Exception:
+        return False
+
+
+async def require_active_subscription(user=Depends(get_current_user)):
+    """Dependency that 402's if the user has no active subscription."""
+    if not _user_has_active_subscription(user):
+        raise HTTPException(status_code=402, detail="Subscription required")
+    return user
+
+
 # ------------ Models ------------
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -339,7 +359,7 @@ async def calories(user=Depends(get_current_user)):
 
 
 @api_router.get("/workouts/today")
-async def workout_today(user=Depends(get_current_user)):
+async def workout_today(user=Depends(require_active_subscription)):
     profile = user.get("profile", {}) or {}
     focus_list = profile.get("body_focus") or ["full_body"]
     focus = focus_list[0] if focus_list else "full_body"
@@ -368,7 +388,7 @@ async def workout_today(user=Depends(get_current_user)):
 
 
 @api_router.post("/workouts/rate")
-async def rate_workout(req: RateWorkoutRequest, user=Depends(get_current_user)):
+async def rate_workout(req: RateWorkoutRequest, user=Depends(require_active_subscription)):
     entry = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
@@ -415,7 +435,7 @@ async def weekly_progress(user=Depends(get_current_user)):
 
 
 @api_router.post("/workouts/complete")
-async def complete_workout(req: CompleteDayRequest, user=Depends(get_current_user)):
+async def complete_workout(req: CompleteDayRequest, user=Depends(require_active_subscription)):
     completed = user.get("completed_days", []) or []
     if req.day in completed:
         return {"streak": user.get("streak", 0), "completed_days": completed, "already": True}
@@ -429,7 +449,7 @@ async def complete_workout(req: CompleteDayRequest, user=Depends(get_current_use
 
 
 @api_router.get("/meals/plans")
-async def meal_plans(user=Depends(get_current_user)):
+async def meal_plans(user=Depends(require_active_subscription)):
     goal = (user.get("profile") or {}).get("goal", "healthy")
     return {"recommended": goal, "plans": MEAL_PLANS}
 
@@ -455,7 +475,7 @@ async def get_weights(user=Depends(get_current_user)):
 
 
 @api_router.post("/chat")
-async def chat(req: ChatRequest, user=Depends(get_current_user)):
+async def chat(req: ChatRequest, user=Depends(require_active_subscription)):
     profile = user.get("profile", {}) or {}
     macros = compute_bmr_tdee(profile) or {}
     sys = (
@@ -508,16 +528,7 @@ class CheckoutRequest(BaseModel):
 
 
 def is_subscription_active(user: dict) -> bool:
-    sub = user.get("subscription") if user else None
-    if not sub:
-        return False
-    expires = sub.get("access_expires_at")
-    if not expires:
-        return False
-    try:
-        return datetime.fromisoformat(expires) > now_utc()
-    except Exception:
-        return False
+    return _user_has_active_subscription(user)
 
 
 @api_router.get("/subscription/plans")

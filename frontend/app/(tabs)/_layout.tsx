@@ -1,9 +1,22 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../src/AuthContext';
+import { COLORS, useAuth } from '../../src/AuthContext';
 import { Platform } from 'react-native';
+import { useEffect } from 'react';
 
 export default function TabsLayout() {
+  const { subscription, refreshSubscription } = useAuth();
+  const router = useRouter();
+  useEffect(() => {
+    (async () => {
+      const s = await refreshSubscription();
+      if (s && !s.active) router.replace('/subscribe');
+    })();
+  }, []);
+  if (subscription && !subscription.active) {
+    // While redirecting
+    return null;
+  }
   return (
     <Tabs
       screenOptions={({ route }) => ({

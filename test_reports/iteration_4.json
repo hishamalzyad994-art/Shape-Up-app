@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 4 hard-paywall + reminders. Backend: 17/17 paywall tests PASS. /workouts/today, /workouts/complete, /workouts/rate, /meals/plans, /chat all correctly return 402 for users without active sub. /auth/me, /profile (PUT), /calories, /progress/weight (POST/GET), /progress/weekly, /subscription/* all return 200. Subscription status correctly returns active=false for new users. Stripe checkout still creates valid sessions. Frontend: CRITICAL bug found and patched in /app/frontend/src/AuthContext.tsx — `subscription` state, `setSubscription` setter, and `refreshSubscription` function were referenced (in type, signOut, Provider value) but NEVER declared, causing ReferenceError that broke the entire app on first render. Added missing useState + useCallback. After fix, app loads correctly. Verified: unauth user → /auth/login redirect ✅. Login as test@cy.com (profile complete, no sub) → /subscribe redirect ✅. /subscribe screen renders all 3 plans (£3.99/£19.99/£34.99), BEST VALUE badge on yearly, SUBSCRIBE NOW button (testID subscribe-btn) visible. Zero console errors after fix. Did NOT complete real Stripe payment per instructions, so tabs-layout defense-in-depth redirect, onboarding→/subscribe transition, and setting-reminders toggle were not exercised end-to-end (require active sub).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "src/AuthContext.tsx", "issue": "ReferenceError: subscription is not defined — `subscription` state, setSubscription, and refreshSubscription were referenced in AuthCtx type, signOut, and Provider value but never declared via useState/useCallback. Entire app crashed on first render (red-screen). PATCHED in this iteration by adding `const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null)` and a refreshSubscription callback that GETs /api/subscription/status.", "testID": "n/a", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_paywall_iter4.py",
+    "/app/test_reports/pytest/iter4_paywall.xml"
+  ],
+  "action_items": [
+    "Review my AuthContext.tsx patch — confirm refreshSubscription should also be called on initial mount (currently only called from index.tsx and (tabs)/_layout.tsx). Consider auto-refreshing on login/signUp success so paywall state is hydrated immediately.",
+    "End-to-end pay flow + tabs defense-in-depth redirect + setting-reminders toggle were NOT tested end-to-end because completing a real Stripe payment is forbidden. Main agent should manually grant a subscription (e.g., MongoDB update) and re-run frontend tests to confirm /(tabs) loads, that flipping setting-reminders Switch fires scheduleDailyReminder/cancelDailyReminder, and that an inactive sub from /(tabs) bounces back to /subscribe.",
+    "Carry-over from iter3: emergent Stripe proxy 404 race in /subscription/poll/{session_id} still needs retry/backoff or webhook fallback.",
+    "Carry-over: PLAN_CONFIG dict duplicated as inlined list in subscription_plans() — DRY fix.",
+    "Carry-over: subscribe.tsx poll loop silently swallows errors — add Alert on persistent 404."
+  ],
+  "critical_code_review_comments": [
+    "AuthContext.tsx shipped with three undefined identifiers in the Provider value — this should have been caught by TypeScript strict mode or a smoke render. Recommend enabling `noUnusedLocals` + `strict` in tsconfig and adding a render-smoke test that mounts AuthProvider.",
+    "/app/frontend/src/notifications.ts uses Notifications.scheduleNotificationAsync trigger object {hour, minute, repeats:true}. expo-notifications v0.30+ requires `type: 'daily'` or SchedulableTriggerInputTypes.DAILY. Without it, the daily reminder may not fire on native iOS/Android. Worth verifying on a real device.",
+    "subscribe.tsx scheduleDailyReminder is called only on the post-poll success path; if user pays in another session and lands on /(tabs) directly, reminders are never scheduled. Consider scheduling whenever subscription becomes active in refreshSubscription."
+  ],
+  "updated_files": [
+    "/app/frontend/src/AuthContext.tsx (added missing subscription useState + refreshSubscription useCallback)",
+    "/app/backend/tests/test_paywall_iter4.py (NEW — 17 paywall gating tests)",
+    "/app/test_reports/pytest/iter4_paywall.xml"
+  ],
+  "success_rate": {"backend": "100% (17/17 paywall tests passed)", "frontend": "Routing verified: unauth→login ✅, login(no-sub)→/subscribe ✅, /subscribe renders 3 plans ✅. tabs/onboarding-redirect/reminders-toggle NOT verified (would require active sub)."},
+  "seed_data_creation": "Registered fresh pw_<uuid>@cy.com / pass123 for each pytest run; not cleaned up.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_paywall_iter4.py -v`. The frontend AuthContext fix is live — verify it survived any subsequent main-agent edits. To exercise the full active-sub flow without Stripe, the main agent can directly write a subscription doc into MongoDB for test@cy.com (db.users.update({email:'test@cy.com'}, {$set:{subscription:{plan:'monthly', access_expires_at:<future ISO>, last_payment_status:'paid'}}})). Then re-run frontend tests to verify /(tabs) loads, setting-reminders Switch fires, and Profile screen renders.",
+  "rca_of_issue": "AuthContext.tsx had three undefined identifiers (subscription, setSubscription, refreshSubscription) referenced in the Provider value, signOut handler, and AuthCtx type. Root cause: incomplete implementation — the type contract was extended for iteration 3/4 subscription state, but the corresponding useState and useCallback bodies were never added inside AuthProvider. Symptom: ReferenceError on first render → entire app red-screened → no UI testable at all. Fix: declared `const [subscription, setSubscription] = useState<SubscriptionStatus|null>(null)` and `const refreshSubscription = useCallback(async () => GET /api/subscription/status, persist to AsyncStorage, return status)` inside AuthProvider. Verified app now boots, redirects unauth→login, and authenticated-no-sub users→/subscribe."
+}
