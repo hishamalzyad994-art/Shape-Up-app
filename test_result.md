@@ -147,7 +147,7 @@ backend:
 frontend:
   - task: "Subscribe screen shows 3-day free trial UI and disclaimer"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/app/subscribe.tsx"
     stuck_count: 0
     priority: "high"
@@ -156,6 +156,9 @@ frontend:
       - working: "NA"
         agent: "main"
         comment: "Trial banner with badge, plan cards now show '£0.00 / FREE for 3 days / then £X' for trial-eligible users, CTA reads 'START 3-DAY FREE TRIAL', explicit cancel disclaimer rendered. Verified visually via screenshot."
+      - working: true
+        agent: "testing"
+        comment: "End-to-end UI test PASS on /subscribe at iPhone 12 (390x844) & Galaxy S21 (360x800). Registered fresh user trialtest_990615@cy.com, completed onboarding, landed on /subscribe. Verified: (a) trial-banner shows '3 DAYS FREE TRIAL' badge, 'Try ShapeUp Pro free for 3 days' title, 'Card required up front. You won't be charged today.' subtitle, and bold 'Cancel anytime before the trial ends to avoid being charged.' line. (b) All 3 plan cards (plan-monthly, plan-sixmonths, plan-yearly) show '£0.00' + 'FREE for 3 days' + 'then £3.99/£19.99/£34.99' with correct AUTO-RENEW (monthly) and BEST VALUE (yearly) badges. (c) CTA 'subscribe-btn' text exactly 'START 3-DAY FREE TRIAL'; tapping it produced POST /api/subscription/checkout → 200 and browser navigated to https://checkout.stripe.com/c/pay/cs_test_... — Stripe redirect initiated successfully. (d) 'trial-disclaimer' visible below CTA with correct text. (e) After login as test@cy.com (existing subscriber): trial-banner NOT rendered (count=0), 'sub-active-card' with 'YOU'RE PRO ✨' visible. NOTE: cancel-subscription-btn is conditionally rendered only when auto_renew=true AND !cancel_at_period_end — for test@cy.com the active card shows 'Access until 5/15/2026' (auto_renew=false), so the cancel button is intentionally hidden per the implemented logic. This is correct behavior, not a bug; review request expectation just didn't match this account's auto_renew state. All other critical paywall UI requirements PASS."
 
 metadata:
   created_by: "main_agent"
@@ -174,5 +177,7 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "Please verify the 3-day free trial backend flow only. (1) Register a fresh user, hit GET /api/subscription/plans → expect trial_days=3, trial_eligible=true. (2) POST /api/subscription/checkout with plan='monthly' → expect 200, url containing 'checkout.stripe.com', trial_days=3 in the response body. (3) Flip user.has_used_trial=true in Mongo and POST /api/subscription/checkout again → expect trial_days=0. Use test credentials from /app/memory/test_credentials.md or create a new user. Do NOT run frontend tests."
+  - agent: "testing"
+    message: "Frontend /subscribe paywall test PASS (mobile viewports 390x844 & 360x800). Fresh user trialtest_990615@cy.com → trial-banner with all required text, 3 plan cards with correct '£0.00 / FREE for 3 days / then £X.XX' pricing and AUTO-RENEW/BEST VALUE badges, CTA 'START 3-DAY FREE TRIAL', clicking CTA → POST /api/subscription/checkout 200 → browser redirected to checkout.stripe.com/c/pay/cs_test_... (Stripe Emergent proxy). trial-disclaimer visible. For test@cy.com (existing subscriber): trial-banner correctly hidden, sub-active-card with 'YOU'RE PRO ✨' shown. CANCEL SUBSCRIPTION button intentionally hidden because that account's subscription has auto_renew=false (shows 'Access until' — likely one-off/already-cancelled plan); button is gated by `status.auto_renew && !status.cancel_at_period_end` per subscribe.tsx logic — correct behavior, no fix needed. Backend logs confirm all Stripe + API calls returned 200."
   - agent: "testing"
     message: "Ran /app/backend_test.py against external base URL (slim-challenge-5.preview.emergentagent.com). 11/11 backend checks PASS. (a) Fresh user GET /api/subscription/plans → trial_days=3, trial_eligible=true, all 3 plans correct (£3.99/£19.99/£34.99). (b) POST /api/subscription/checkout for monthly/sixmonths/yearly each return 200 with trial_days=3, recurring=true, non-empty session_id, and url on integrations.emergentagent.com (emergent Stripe proxy). (c) After flipping users.has_used_trial=true in Mongo (db: changeyourself_db), GET /api/subscription/plans returns trial_eligible=false and POST /api/subscription/checkout monthly returns trial_days=0. (d) Regression endpoints all 200: GET /api/subscription/status (fresh + subscribed), GET /api/workouts/today, GET /api/exercises/library, POST /api/chat (used /api/chat — note request said /api/chat/send which does not exist in server.py; the implemented route is /api/chat). No 4xx/5xx observed. Backend logs confirm Stripe and LLM calls succeeded."
