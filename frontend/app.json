@@ -10,11 +10,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.shapup.app"
+      "bundleIdentifier": "com.shapup.myapp"
     },
     "android": {
-      "package": "com.shapup.app",
-      "versionCode": 2,
+      "package": "com.shapup.myapp",
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000"

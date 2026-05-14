@@ -132,6 +132,22 @@ class RateWorkoutRequest(BaseModel):
     self_score: Optional[int] = Field(None, ge=1, le=5)
     note: Optional[str] = None
 
+
+class ExerciseItem(BaseModel):
+    name: str
+    sets: int
+    reps: int
+    unit: str = "reps"
+    icon: Optional[str] = "flash-outline"
+    equipment: Optional[str] = "bodyweight"
+    gif: Optional[str] = None
+
+
+class CustomizeWorkoutRequest(BaseModel):
+    focus: str
+    exercises: List[ExerciseItem]
+
+
 class ChatRequest(BaseModel):
     message: str
 
@@ -178,44 +194,61 @@ def compute_bmr_tdee(profile: dict):
 # ------------ Static content: exercises & meals ------------
 EXERCISES_BY_FOCUS = {
     "belly": [
-        {"name": "Plank", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "gif": "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?w=400"},
-        {"name": "Mountain Climbers", "sets": 3, "reps": 20, "unit": "reps", "icon": "flash-outline", "gif": "https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=400"},
-        {"name": "Russian Twists", "sets": 3, "reps": 30, "unit": "reps", "icon": "sync-outline", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
-        {"name": "Bicycle Crunches", "sets": 3, "reps": 20, "unit": "reps", "icon": "bicycle-outline", "gif": "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400"},
-        {"name": "Leg Raises", "sets": 3, "reps": 15, "unit": "reps", "icon": "arrow-up-outline", "gif": "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?w=400"},
+        {"name": "Plank", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?w=400"},
+        {"name": "Crunches", "sets": 3, "reps": 20, "unit": "reps", "icon": "fitness-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400"},
+        {"name": "Hanging Leg Raises", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?w=400"},
+        {"name": "Cable Crunch", "sets": 3, "reps": 15, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
+        {"name": "Mountain Climbers", "sets": 3, "reps": 20, "unit": "reps", "icon": "flash-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=400"},
     ],
     "chest": [
-        {"name": "Push Ups", "sets": 4, "reps": 15, "unit": "reps", "icon": "fitness-outline", "gif": "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?w=400"},
-        {"name": "Incline Push Ups", "sets": 3, "reps": 12, "unit": "reps", "icon": "trending-up-outline", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
-        {"name": "Diamond Push Ups", "sets": 3, "reps": 10, "unit": "reps", "icon": "diamond-outline", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
-        {"name": "Chest Dips", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-down-outline", "gif": "https://images.unsplash.com/photo-1583500178690-f7fd39f44e8d?w=400"},
+        {"name": "Bench Press", "sets": 4, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
+        {"name": "Incline Dumbbell Press", "sets": 3, "reps": 10, "unit": "reps", "icon": "trending-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
+        {"name": "Push Ups", "sets": 4, "reps": 15, "unit": "reps", "icon": "fitness-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?w=400"},
+        {"name": "Cable Fly", "sets": 3, "reps": 12, "unit": "reps", "icon": "git-network-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583500178690-f7fd39f44e8d?w=400"},
+        {"name": "Dumbbell Pullover", "sets": 3, "reps": 12, "unit": "reps", "icon": "ellipse-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
     ],
     "arms": [
-        {"name": "Bicep Curls", "sets": 4, "reps": 12, "unit": "reps", "icon": "barbell-outline", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
-        {"name": "Tricep Dips", "sets": 3, "reps": 15, "unit": "reps", "icon": "arrow-down-outline", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
-        {"name": "Hammer Curls", "sets": 3, "reps": 12, "unit": "reps", "icon": "barbell-outline", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
-        {"name": "Pike Push Ups", "sets": 3, "reps": 10, "unit": "reps", "icon": "fitness-outline", "gif": "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?w=400"},
+        {"name": "Barbell Bicep Curl", "sets": 4, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
+        {"name": "Dumbbell Hammer Curl", "sets": 3, "reps": 12, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
+        {"name": "Tricep Rope Pushdown", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-down-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
+        {"name": "Skull Crushers", "sets": 3, "reps": 10, "unit": "reps", "icon": "skull-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583500178690-f7fd39f44e8d?w=400"},
+        {"name": "Tricep Dips", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-down-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
     ],
     "legs": [
-        {"name": "Squats", "sets": 4, "reps": 20, "unit": "reps", "icon": "body-outline", "gif": "https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=400"},
-        {"name": "Lunges", "sets": 3, "reps": 12, "unit": "each", "icon": "walk-outline", "gif": "https://images.unsplash.com/photo-1434596922112-19c563067271?w=400"},
-        {"name": "Jump Squats", "sets": 3, "reps": 15, "unit": "reps", "icon": "flash-outline", "gif": "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=400"},
-        {"name": "Wall Sit", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "gif": "https://images.unsplash.com/photo-1599058945522-28d584b6f0ff?w=400"},
-        {"name": "Calf Raises", "sets": 3, "reps": 20, "unit": "reps", "icon": "arrow-up-outline", "gif": "https://images.unsplash.com/photo-1535743686920-55e4145369b9?w=400"},
+        {"name": "Barbell Back Squat", "sets": 4, "reps": 8, "unit": "reps", "icon": "body-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=400"},
+        {"name": "Romanian Deadlift", "sets": 3, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
+        {"name": "Leg Press", "sets": 4, "reps": 12, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=400"},
+        {"name": "Lunges", "sets": 3, "reps": 12, "unit": "each", "icon": "walk-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1434596922112-19c563067271?w=400"},
+        {"name": "Leg Curl", "sets": 3, "reps": 12, "unit": "reps", "icon": "sync-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1599058945522-28d584b6f0ff?w=400"},
+        {"name": "Standing Calf Raise", "sets": 3, "reps": 15, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1535743686920-55e4145369b9?w=400"},
     ],
     "waist": [
-        {"name": "Side Plank", "sets": 3, "reps": 30, "unit": "sec each", "icon": "timer-outline", "gif": "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?w=400"},
-        {"name": "Standing Side Crunches", "sets": 3, "reps": 20, "unit": "reps", "icon": "swap-horizontal-outline", "gif": "https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=400"},
-        {"name": "Wood Choppers", "sets": 3, "reps": 12, "unit": "each", "icon": "leaf-outline", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
-        {"name": "Russian Twists", "sets": 3, "reps": 30, "unit": "reps", "icon": "sync-outline", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
+        {"name": "Side Plank", "sets": 3, "reps": 30, "unit": "sec each", "icon": "timer-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?w=400"},
+        {"name": "Cable Wood Chop", "sets": 3, "reps": 12, "unit": "each", "icon": "leaf-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
+        {"name": "Russian Twists (weighted)", "sets": 3, "reps": 20, "unit": "reps", "icon": "sync-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
+        {"name": "Standing Side Bend", "sets": 3, "reps": 15, "unit": "each", "icon": "swap-horizontal-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=400"},
+    ],
+    "back": [
+        {"name": "Deadlift", "sets": 4, "reps": 6, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
+        {"name": "Pull Ups", "sets": 4, "reps": 8, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?w=400"},
+        {"name": "Bent Over Row", "sets": 4, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
+        {"name": "Lat Pulldown", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-down-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
+        {"name": "Seated Cable Row", "sets": 3, "reps": 12, "unit": "reps", "icon": "git-network-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583500178690-f7fd39f44e8d?w=400"},
+    ],
+    "shoulders": [
+        {"name": "Overhead Press", "sets": 4, "reps": 8, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
+        {"name": "Dumbbell Lateral Raise", "sets": 3, "reps": 12, "unit": "reps", "icon": "swap-horizontal-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
+        {"name": "Front Raise", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
+        {"name": "Face Pulls", "sets": 3, "reps": 15, "unit": "reps", "icon": "git-pull-request-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583500178690-f7fd39f44e8d?w=400"},
+        {"name": "Pike Push Ups", "sets": 3, "reps": 10, "unit": "reps", "icon": "fitness-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?w=400"},
     ],
     "full_body": [
-        {"name": "Burpees", "sets": 3, "reps": 12, "unit": "reps", "icon": "flame-outline", "gif": "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=400"},
-        {"name": "Jumping Jacks", "sets": 3, "reps": 30, "unit": "reps", "icon": "expand-outline", "gif": "https://images.unsplash.com/photo-1434596922112-19c563067271?w=400"},
-        {"name": "Push Ups", "sets": 3, "reps": 15, "unit": "reps", "icon": "fitness-outline", "gif": "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?w=400"},
-        {"name": "Squats", "sets": 3, "reps": 20, "unit": "reps", "icon": "body-outline", "gif": "https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=400"},
-        {"name": "Plank", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "gif": "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?w=400"},
-        {"name": "Mountain Climbers", "sets": 3, "reps": 20, "unit": "reps", "icon": "flash-outline", "gif": "https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=400"},
+        {"name": "Barbell Squat", "sets": 4, "reps": 8, "unit": "reps", "icon": "body-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=400"},
+        {"name": "Deadlift", "sets": 3, "reps": 8, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
+        {"name": "Bench Press", "sets": 3, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
+        {"name": "Pull Ups", "sets": 3, "reps": 8, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?w=400"},
+        {"name": "Burpees", "sets": 3, "reps": 12, "unit": "reps", "icon": "flame-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=400"},
+        {"name": "Plank", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?w=400"},
     ],
 }
 
@@ -364,7 +397,13 @@ async def workout_today(user=Depends(require_active_subscription)):
     focus_list = profile.get("body_focus") or ["full_body"]
     focus = focus_list[0] if focus_list else "full_body"
     difficulty = profile.get("difficulty", "medium")
-    exercises = scale_exercises(EXERCISES_BY_FOCUS.get(focus, EXERCISES_BY_FOCUS["full_body"]), difficulty)
+
+    # If user has a custom-saved workout for this focus, use it as-is
+    custom = await db.custom_workouts.find_one({"user_id": user["id"], "focus": focus}, {"_id": 0})
+    if custom and custom.get("exercises"):
+        exercises = custom["exercises"]
+    else:
+        exercises = scale_exercises(EXERCISES_BY_FOCUS.get(focus, EXERCISES_BY_FOCUS["full_body"]), difficulty)
     # Ongoing day counter (no cap)
     start = user.get("challenge_start")
     day = 1
@@ -384,7 +423,41 @@ async def workout_today(user=Depends(require_active_subscription)):
         "estimated_minutes": int(20 + len(exercises) * 2 * DIFFICULTY_MULT.get(difficulty, 1.0)),
         "completed_days": user.get("completed_days", []),
         "streak": user.get("streak", 0),
+        "is_custom": bool(custom),
     }
+
+
+@api_router.get("/exercises/library")
+async def exercises_library(user=Depends(require_active_subscription)):
+    """Return the full exercise catalogue grouped by focus, for the edit picker."""
+    return {"library": EXERCISES_BY_FOCUS}
+
+
+@api_router.post("/workouts/customize")
+async def customize_workout(req: CustomizeWorkoutRequest, user=Depends(require_active_subscription)):
+    if req.focus not in EXERCISES_BY_FOCUS:
+        raise HTTPException(status_code=400, detail="Unknown focus area")
+    if not req.exercises:
+        raise HTTPException(status_code=400, detail="Workout must have at least one exercise")
+    doc = {
+        "user_id": user["id"],
+        "focus": req.focus,
+        "exercises": [e.dict() for e in req.exercises],
+        "updated_at": now_utc().isoformat(),
+    }
+    await db.custom_workouts.update_one(
+        {"user_id": user["id"], "focus": req.focus},
+        {"$set": doc},
+        upsert=True,
+    )
+    return {"ok": True, "focus": req.focus, "exercise_count": len(req.exercises)}
+
+
+@api_router.delete("/workouts/customize/{focus}")
+async def reset_workout(focus: str, user=Depends(require_active_subscription)):
+    """Reset the custom workout for a focus back to the app default."""
+    await db.custom_workouts.delete_one({"user_id": user["id"], "focus": focus})
+    return {"ok": True, "focus": focus}
 
 
 @api_router.post("/workouts/rate")

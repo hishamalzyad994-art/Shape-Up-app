@@ -10,6 +10,8 @@ const FOCUS_OPTIONS = [
   { key: 'belly', label: 'BELLY', icon: 'fitness' },
   { key: 'chest', label: 'CHEST', icon: 'body' },
   { key: 'arms', label: 'ARMS', icon: 'barbell' },
+  { key: 'back', label: 'BACK', icon: 'shield' },
+  { key: 'shoulders', label: 'SHOULDERS', icon: 'triangle' },
   { key: 'legs', label: 'LEGS', icon: 'walk' },
   { key: 'waist', label: 'WAIST', icon: 'resize' },
   { key: 'full_body', label: 'FULL BODY', icon: 'flame' },
@@ -56,6 +58,12 @@ export default function Workout() {
   const [selfScore, setSelfScore] = useState(0);
   const [rateNote, setRateNote] = useState('');
 
+  // Edit mode
+  const [editMode, setEditMode] = useState(false);
+  const [library, setLibrary] = useState<any>({});
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerCat, setPickerCat] = useState<string>('');
+
   const whistleEnabled = user?.profile?.whistle_enabled !== false;
 
   const load = useCallback(async () => {
@@ -95,6 +103,57 @@ export default function Workout() {
     await api('/profile', { method: 'PUT', body: JSON.stringify({ body_focus: [focus] }) });
     await refreshUser();
     await load();
+  };
+
+  const toggleEdit = async () => {
+    if (!editMode && Object.keys(library).length === 0) {
+      try { const r = await api<any>('/exercises/library'); setLibrary(r.library || {}); } catch (_) {}
+    }
+    setEditMode(!editMode);
+  };
+
+  const updateExercise = (idx: number, patch: any) => {
+    setData((d: any) => ({ ...d, exercises: d.exercises.map((e: any, i: number) => i === idx ? { ...e, ...patch } : e) }));
+  };
+  const removeExercise = (idx: number) => {
+    setData((d: any) => ({ ...d, exercises: d.exercises.filter((_: any, i: number) => i !== idx) }));
+    setDoneIdx(doneIdx.filter(i => i !== idx).map(i => i > idx ? i - 1 : i));
+  };
+  const moveExercise = (idx: number, dir: -1 | 1) => {
+    setData((d: any) => {
+      const arr = [...d.exercises];
+      const ni = idx + dir;
+      if (ni < 0 || ni >= arr.length) return d;
+      [arr[idx], arr[ni]] = [arr[ni], arr[idx]];
+      return { ...d, exercises: arr };
+    });
+  };
+  const addExercise = (ex: any) => {
+    setData((d: any) => ({ ...d, exercises: [...d.exercises, { ...ex }] }));
+    setPickerOpen(false);
+  };
+  const saveCustomization = async () => {
+    try {
+      await api('/workouts/customize', {
+        method: 'POST',
+        body: JSON.stringify({ focus: data.focus, exercises: data.exercises.map((e: any) => ({
+          name: e.name, sets: e.sets, reps: e.reps, unit: e.unit || 'reps',
+          icon: e.icon, equipment: e.equipment, gif: e.gif,
+        })) }),
+      });
+      Alert.alert('✅ Saved', 'Your custom workout is saved.');
+      setEditMode(false);
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
+  };
+  const resetToDefault = async () => {
+    Alert.alert('Reset workout?', 'Restore the default exercises for this focus area.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reset', style: 'destructive', onPress: async () => {
+        try { await api(`/workouts/customize/${data.focus}`, { method: 'DELETE' }); await load(); setEditMode(false); } catch (e: any) { Alert.alert('Error', e.message); }
+      }},
+    ]);
   };
 
   const toggleExercise = (i: number) => {
@@ -180,12 +239,48 @@ export default function Workout() {
           })}
         </View>
 
-        <Text style={styles.sectionTitle}>{data?.title}</Text>
-        <Text style={styles.sectionMeta}>~{data?.estimated_minutes || 25} MIN • {data?.exercises?.length || 0} EXERCISES</Text>
+        <Text style={styles.sectionTitle}>{data?.title}{data?.is_custom ? ' ✏️' : ''}</Text>
+        <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginTop:4}}>
+          <Text style={styles.sectionMeta}>~{data?.estimated_minutes || 25} MIN • {data?.exercises?.length || 0} EXERCISES</Text>
+          <TouchableOpacity testID="edit-workout-btn" onPress={toggleEdit} style={styles.editToggle}>
+            <Ionicons name={editMode ? 'close' : 'create-outline'} size={14} color={editMode ? COLORS.primary : COLORS.secondary} />
+            <Text style={[styles.editToggleTxt, {color: editMode ? COLORS.primary : COLORS.secondary}]}>{editMode ? 'CANCEL' : 'EDIT'}</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={{ marginTop: 16 }}>
           {(data?.exercises || []).map((ex: any, i: number) => {
             const done = doneIdx.includes(i);
+            if (editMode) return (
+              <View key={i} testID={`edit-row-${i}`} style={styles.editCard}>
+                <View style={{flexDirection:'row',alignItems:'center',gap:10}}>
+                  {ex.gif ? <Image source={{ uri: ex.gif }} style={styles.exGif} /> : <View style={[styles.exGif,{alignItems:'center',justifyContent:'center',backgroundColor:COLORS.surfaceElevated}]}><Ionicons name={ex.icon||'flash-outline'} size={26} color={COLORS.primary}/></View>}
+                  <View style={{flex:1}}>
+                    <Text style={styles.exName}>{ex.name}</Text>
+                    <Text style={[styles.exMeta,{color:ex.equipment==='gym'?COLORS.primary:COLORS.secondary}]}>{(ex.equipment||'bodyweight').toUpperCase()}</Text>
+                  </View>
+                  <View style={{flexDirection:'row',gap:4}}>
+                    <TouchableOpacity onPress={() => moveExercise(i, -1)} style={styles.editIconBtn}><Ionicons name="arrow-up" size={16} color={COLORS.text}/></TouchableOpacity>
+                    <TouchableOpacity onPress={() => moveExercise(i, 1)} style={styles.editIconBtn}><Ionicons name="arrow-down" size={16} color={COLORS.text}/></TouchableOpacity>
+                    <TouchableOpacity testID={`remove-${i}`} onPress={() => removeExercise(i)} style={[styles.editIconBtn,{borderColor:COLORS.error}]}><Ionicons name="trash" size={16} color={COLORS.error}/></TouchableOpacity>
+                  </View>
+                </View>
+                <View style={{flexDirection:'row',gap:8,marginTop:10}}>
+                  <View style={{flex:1}}>
+                    <Text style={styles.fieldLbl}>SETS</Text>
+                    <TextInput style={styles.smallInput} keyboardType="numeric" value={String(ex.sets)} onChangeText={(t) => updateExercise(i,{sets: parseInt(t)||1})}/>
+                  </View>
+                  <View style={{flex:1}}>
+                    <Text style={styles.fieldLbl}>REPS</Text>
+                    <TextInput style={styles.smallInput} keyboardType="numeric" value={String(ex.reps)} onChangeText={(t) => updateExercise(i,{reps: parseInt(t)||1})}/>
+                  </View>
+                  <View style={{flex:1.2}}>
+                    <Text style={styles.fieldLbl}>UNIT</Text>
+                    <TextInput style={styles.smallInput} value={ex.unit||'reps'} onChangeText={(t) => updateExercise(i,{unit: t})}/>
+                  </View>
+                </View>
+              </View>
+            );
             return (
               <TouchableOpacity
                 key={i}
@@ -203,7 +298,7 @@ export default function Workout() {
                 )}
                 <View style={styles.exInfo}>
                   <Text style={[styles.exName, done && { textDecorationLine: 'line-through', color: COLORS.textDim }]}>{ex.name}</Text>
-                  <Text style={styles.exMeta}>{ex.sets} SETS × {ex.reps} {ex.unit?.toUpperCase()}</Text>
+                  <Text style={styles.exMeta}>{ex.sets} SETS × {ex.reps} {ex.unit?.toUpperCase()} {ex.equipment === 'gym' ? '• GYM' : ''}</Text>
                 </View>
                 <View style={[styles.exCheck, done && { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary }]}>
                   {done && <Ionicons name="checkmark" size={20} color="#000" />}
@@ -211,19 +306,69 @@ export default function Workout() {
               </TouchableOpacity>
             );
           })}
+
+          {editMode && (
+            <View style={{flexDirection:'row',gap:8,marginTop:4}}>
+              <TouchableOpacity testID="add-exercise-btn" onPress={() => setPickerOpen(true)} style={[styles.editAction,{borderColor:COLORS.secondary}]}>
+                <Ionicons name="add" size={18} color={COLORS.secondary}/>
+                <Text style={[styles.editActionTxt,{color:COLORS.secondary}]}>ADD EXERCISE</Text>
+              </TouchableOpacity>
+              <TouchableOpacity testID="reset-workout-btn" onPress={resetToDefault} style={[styles.editAction,{borderColor:COLORS.textDim}]}>
+                <Ionicons name="refresh" size={18} color={COLORS.textDim}/>
+                <Text style={[styles.editActionTxt,{color:COLORS.textDim}]}>RESET</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
-        <TouchableOpacity
-          testID="workout-complete-btn"
-          style={[styles.cta, submitting && { opacity: 0.6 }, !allDone && { backgroundColor: COLORS.surface }]}
-          onPress={complete}
-          disabled={submitting}
-        >
-          <Text style={[styles.ctaText, !allDone && { color: COLORS.textDim }]}>
-            {allDone ? '🔥 COMPLETE WORKOUT' : `${doneIdx.length}/${data?.exercises?.length || 0} DONE — KEEP GOING`}
-          </Text>
-        </TouchableOpacity>
+        {editMode ? (
+          <TouchableOpacity testID="save-workout-btn" style={styles.cta} onPress={saveCustomization}>
+            <Text style={styles.ctaText}>💾 SAVE MY WORKOUT</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            testID="workout-complete-btn"
+            style={[styles.cta, submitting && { opacity: 0.6 }, !allDone && { backgroundColor: COLORS.surface }]}
+            onPress={complete}
+            disabled={submitting}
+          >
+            <Text style={[styles.ctaText, !allDone && { color: COLORS.textDim }]}>
+              {allDone ? '🔥 COMPLETE WORKOUT' : `${doneIdx.length}/${data?.exercises?.length || 0} DONE — KEEP GOING`}
+            </Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      {/* Library picker modal */}
+      <Modal visible={pickerOpen} animationType="slide" transparent>
+        <View style={styles.modalBg}>
+          <View style={[styles.modalCard,{maxHeight:'80%'}]}>
+            <Text style={styles.modalKicker}>ADD EXERCISE</Text>
+            <Text style={styles.modalTitle}>From library</Text>
+            <ScrollView style={{marginTop:14, maxHeight:380}}>
+              {Object.keys(library).map((cat) => (
+                <View key={cat} style={{marginTop:10}}>
+                  <Text style={styles.libCat}>{cat.replace('_',' ').toUpperCase()}</Text>
+                  {library[cat].map((ex: any, j: number) => (
+                    <TouchableOpacity key={`${cat}-${j}`} testID={`lib-${cat}-${j}`} onPress={() => addExercise(ex)} style={styles.libRow}>
+                      <View style={{flex:1}}>
+                        <Text style={styles.libName}>{ex.name}</Text>
+                        <Text style={[styles.libMeta,{color: ex.equipment==='gym'?COLORS.primary:COLORS.secondary}]}>
+                          {ex.sets}×{ex.reps} {ex.unit} • {(ex.equipment||'bodyweight').toUpperCase()}
+                        </Text>
+                      </View>
+                      <Ionicons name="add-circle" size={26} color={COLORS.secondary}/>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+            <TouchableOpacity onPress={() => setPickerOpen(false)} style={[styles.modalCta,{backgroundColor:COLORS.surface,borderWidth:1,borderColor:COLORS.border}]}>
+              <Text style={[styles.modalCtaText,{color:COLORS.text}]}>CLOSE</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Rate modal */}
       <Modal visible={rateOpen} transparent animationType="fade">
@@ -303,4 +448,16 @@ const styles = StyleSheet.create({
   modalCta: { backgroundColor: COLORS.secondary, paddingVertical: 14, alignItems: 'center', marginTop: 18 },
   modalCtaText: { color: '#000', fontWeight: '900', letterSpacing: 2 },
   modalSkip: { color: COLORS.textDim, fontSize: 11, letterSpacing: 2, fontWeight: '800', textAlign: 'center', marginTop: 14 },
+  editToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 10, paddingVertical: 6 },
+  editToggleTxt: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
+  editCard: { borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, padding: 10, marginBottom: 10 },
+  editIconBtn: { borderWidth: 1, borderColor: COLORS.border, width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  fieldLbl: { color: COLORS.textDim, fontSize: 9, letterSpacing: 1.5, fontWeight: '900', marginBottom: 4 },
+  smallInput: { borderWidth: 1, borderColor: COLORS.border, color: COLORS.text, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, fontWeight: '800' },
+  editAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, paddingVertical: 12, marginTop: 4 },
+  editActionTxt: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
+  libCat: { color: COLORS.primary, fontSize: 11, letterSpacing: 2, fontWeight: '900', marginBottom: 6 },
+  libRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, padding: 12, marginBottom: 6 },
+  libName: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  libMeta: { fontSize: 11, letterSpacing: 1.5, fontWeight: '700', marginTop: 2 },
 });
