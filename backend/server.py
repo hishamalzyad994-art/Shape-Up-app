@@ -589,10 +589,11 @@ async def chat_history(user=Depends(get_current_user)):
 # ============ STRIPE SUBSCRIPTIONS (one-time access passes via emergentintegrations) ============
 # User pays once for N days of access. After expiry → paywall + resubscribe prompt.
 PLAN_CONFIG = {
-    "monthly":   {"amount": 3.99,  "days": 30,  "label": "Monthly",  "display": "£3.99",  "recurring": True,  "stripe_interval": "month"},
-    "sixmonths": {"amount": 19.99, "days": 180, "label": "6 Months", "display": "£19.99", "recurring": False},
-    "yearly":    {"amount": 34.99, "days": 365, "label": "Yearly",   "display": "£34.99", "recurring": False},
+    "monthly":   {"amount": 3.99,  "days": 30,  "label": "Monthly",  "display": "£3.99",  "recurring": True, "stripe_interval": "month", "interval_count": 1},
+    "sixmonths": {"amount": 19.99, "days": 180, "label": "6 Months", "display": "£19.99", "recurring": True, "stripe_interval": "month", "interval_count": 6},
+    "yearly":    {"amount": 34.99, "days": 365, "label": "Yearly",   "display": "£34.99", "recurring": True, "stripe_interval": "year",  "interval_count": 1},
 }
+TRIAL_DAYS = 3
 _recurring_price_cache: dict = {}
 
 
@@ -631,13 +632,16 @@ def is_subscription_active(user: dict) -> bool:
 
 
 @api_router.get("/subscription/plans")
-async def subscription_plans():
+async def subscription_plans(user=Depends(get_current_user)):
+    has_used_trial = bool(user.get("has_used_trial", False))
     return {
         "currency": "GBP",
+        "trial_days": TRIAL_DAYS,
+        "trial_eligible": not has_used_trial,
         "plans": [
-            {"key": "monthly",   "label": "Monthly",   "amount": 3.99,  "display": "£3.99",  "period": "per month (auto-renew)", "savings": None,       "recurring": True},
-            {"key": "sixmonths", "label": "6 Months",  "amount": 19.99, "display": "£19.99", "period": "180 days (one-off)",     "savings": "16% off",  "recurring": False},
-            {"key": "yearly",    "label": "Yearly",    "amount": 34.99, "display": "£34.99", "period": "365 days (one-off)",     "savings": "27% off",  "recurring": False},
+            {"key": "monthly",   "label": "Monthly",   "amount": 3.99,  "display": "£3.99",  "period": "per month",        "savings": None,       "recurring": True},
+            {"key": "sixmonths", "label": "6 Months",  "amount": 19.99, "display": "£19.99", "period": "every 6 months",   "savings": "16% off",  "recurring": True},
+            {"key": "yearly",    "label": "Yearly",    "amount": 34.99, "display": "£34.99", "period": "per year",         "savings": "27% off",  "recurring": True},
         ],
     }
 
@@ -651,59 +655,54 @@ async def subscription_checkout(req: CheckoutRequest, user=Depends(get_current_u
     success_url = f"{origin}/subscribe?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/subscribe?cancelled=1"
 
-    if cfg.get("recurring"):
-        # Auto-renewing subscription. Use customer_email so Stripe creates the customer
-        # during checkout — avoids stale ID issues on the integration proxy.
-        session = stripe.checkout.Session.create(
-            customer_email=user["email"],
-            mode="subscription",
-            line_items=[{
-                "price_data": {
-                    "currency": "gbp",
-                    "product_data": {"name": f"ShapeUp {cfg['label']} (auto-renew)"},
-                    "unit_amount": int(round(cfg["amount"] * 100)),
-                    "recurring": {"interval": cfg["stripe_interval"]},
-                },
-                "quantity": 1,
-            }],
-            success_url=success_url,
-            cancel_url=cancel_url,
-            subscription_data={"metadata": {"user_id": user["id"], "plan": req.plan, "days": str(cfg["days"])}},
-        )
-        await db.payments.insert_one({
-            "id": str(uuid.uuid4()),
-            "user_id": user["id"],
-            "session_id": session.id,
-            "plan": req.plan,
-            "amount": cfg["amount"],
-            "currency": "gbp",
-            "mode": "subscription",
-            "payment_status": "pending",
-            "created_at": now_utc().isoformat(),
-        })
-        return {"url": session.url, "session_id": session.id, "plan": req.plan, "display": cfg["display"], "recurring": True}
+    has_used_trial = bool(user.get("has_used_trial", False))
+    trial_days = TRIAL_DAYS if not has_used_trial else 0
 
-    # One-time pass via emergentintegrations
-    payment_req = CheckoutSessionRequest(
-        amount=cfg["amount"],
-        currency="gbp",
+    subscription_data = {"metadata": {"user_id": user["id"], "plan": req.plan, "days": str(cfg["days"])}}
+    if trial_days:
+        subscription_data["trial_period_days"] = trial_days
+
+    recurring = {"interval": cfg["stripe_interval"]}
+    if cfg.get("interval_count") and cfg["interval_count"] != 1:
+        recurring["interval_count"] = cfg["interval_count"]
+
+    session = stripe.checkout.Session.create(
+        customer_email=user["email"],
+        mode="subscription",
+        line_items=[{
+            "price_data": {
+                "currency": "gbp",
+                "product_data": {"name": f"ShapeUp {cfg['label']}"},
+                "unit_amount": int(round(cfg["amount"] * 100)),
+                "recurring": recurring,
+            },
+            "quantity": 1,
+        }],
         success_url=success_url,
         cancel_url=cancel_url,
-        metadata={"user_id": user["id"], "plan": req.plan, "days": str(cfg["days"]), "email": user["email"]},
+        subscription_data=subscription_data,
+        payment_method_collection="always",  # require card even during trial
     )
-    session = await stripe_checkout.create_checkout_session(payment_req)
     await db.payments.insert_one({
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
-        "session_id": session.session_id,
+        "session_id": session.id,
         "plan": req.plan,
         "amount": cfg["amount"],
         "currency": "gbp",
-        "mode": "payment",
+        "mode": "subscription",
+        "trial_days": trial_days,
         "payment_status": "pending",
         "created_at": now_utc().isoformat(),
     })
-    return {"url": session.url, "session_id": session.session_id, "plan": req.plan, "display": cfg["display"], "recurring": False}
+    return {
+        "url": session.url,
+        "session_id": session.id,
+        "plan": req.plan,
+        "display": cfg["display"],
+        "recurring": True,
+        "trial_days": trial_days,
+    }
 
 
 @api_router.post("/subscription/cancel")
@@ -820,7 +819,7 @@ async def subscription_poll(session_id: str, user=Depends(get_current_user)):
                     sub_doc["stripe_subscription_id"] = stripe_sub_id
             except Exception:
                 pass
-        await db.users.update_one({"id": user["id"]}, {"$set": {"subscription": sub_doc}})
+        await db.users.update_one({"id": user["id"]}, {"$set": {"subscription": sub_doc, "has_used_trial": True}})
         await db.payments.update_one({"session_id": session_id}, {"$set": {"payment_status": "paid"}})
         granted = True
 

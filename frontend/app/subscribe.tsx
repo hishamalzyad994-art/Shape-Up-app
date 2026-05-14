@@ -17,12 +17,16 @@ export default function Subscribe() {
   const [selected, setSelected] = useState<string>('monthly');
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
+  const [trialDays, setTrialDays] = useState<number>(3);
+  const [trialEligible, setTrialEligible] = useState<boolean>(true);
   const pollRef = useRef<any>(null);
 
   const load = useCallback(async () => {
     try {
       const p = await api<any>('/subscription/plans');
       setPlans(p.plans || []);
+      setTrialDays(p.trial_days ?? 3);
+      setTrialEligible(p.trial_eligible !== false);
       const s = await api<any>('/subscription/status');
       setStatus(s);
     } catch (_) {}
@@ -48,7 +52,7 @@ export default function Subscribe() {
             await scheduleDailyReminder(9, 0);
           } catch (_) {}
           setPolling(false);
-          Alert.alert('🎉 SUCCESS', `Access granted!\nValid until ${new Date(r.access_expires_at).toLocaleDateString()}\n\nDaily workout reminders are now ON.`,
+          Alert.alert('🎉 SUCCESS', `${trialEligible ? `Your ${trialDays}-day free trial has started!\n` : ''}Access granted!\nValid until ${new Date(r.access_expires_at).toLocaleDateString()}\n\nDaily workout reminders are now ON.`,
             [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }]);
           return;
         }
@@ -109,6 +113,22 @@ export default function Subscribe() {
         <Text style={styles.kicker}>SHAPEUP PRO</Text>
         <Text style={styles.title}>UNLOCK{'\n'}EVERYTHING</Text>
         <View style={styles.accentBar} />
+
+        {!status?.active && trialEligible && (
+          <View style={styles.trialBanner} testID="trial-banner">
+            <View style={styles.trialBadge}>
+              <Ionicons name="gift" size={18} color="#000" />
+              <Text style={styles.trialBadgeText}>{trialDays} DAYS FREE TRIAL</Text>
+            </View>
+            <Text style={styles.trialTitle}>Try ShapeUp Pro free for {trialDays} days</Text>
+            <Text style={styles.trialSubtitle}>
+              Card required up front. You won't be charged today.{'\n'}
+              <Text style={{ fontWeight: '900', color: COLORS.text }}>
+                Cancel anytime before the trial ends to avoid being charged.
+              </Text>
+            </Text>
+          </View>
+        )}
 
         {status?.active ? (
           <View style={styles.activeCard} testID="sub-active-card">
@@ -195,8 +215,20 @@ export default function Subscribe() {
               )}
               <View style={styles.planLeft}>
                 <Text style={styles.planLabel}>{p.label.toUpperCase()}</Text>
-                <Text style={styles.planPrice}>{p.display}</Text>
-                <Text style={styles.planPeriod}>{p.period}</Text>
+                {trialEligible ? (
+                  <>
+                    <Text style={styles.planPrice}>£0.00</Text>
+                    <Text style={styles.planPeriod}>
+                      <Text style={{ color: COLORS.secondary, fontWeight: '900' }}>FREE for {trialDays} days</Text>
+                      {'\n'}then {p.display} {p.period}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.planPrice}>{p.display}</Text>
+                    <Text style={styles.planPeriod}>{p.period}</Text>
+                  </>
+                )}
               </View>
               <View style={styles.planRight}>
                 {p.savings && <Text style={styles.savings}>{p.savings}</Text>}
@@ -216,13 +248,25 @@ export default function Subscribe() {
         >
           {loading ? <ActivityIndicator color="#000" /> : (
             <Text style={styles.ctaText}>
-              {status?.active ? 'ALREADY ACTIVE' : 'SUBSCRIBE NOW'}
+              {status?.active
+                ? 'ALREADY ACTIVE'
+                : trialEligible
+                  ? `START ${trialDays}-DAY FREE TRIAL`
+                  : 'SUBSCRIBE NOW'}
             </Text>
           )}
         </TouchableOpacity>
 
+        {!status?.active && trialEligible && (
+          <Text style={styles.disclaimer} testID="trial-disclaimer">
+            Cancel anytime before the trial ends to avoid being charged.
+          </Text>
+        )}
+
         <Text style={styles.legal}>
-          Monthly plan auto-renews until you cancel • 6-month & yearly are one-off payments
+          {trialEligible && !status?.active
+            ? `${trialDays}-day free trial then auto-renews at the selected plan price until cancelled. Manage or cancel anytime from this screen.`
+            : 'Monthly plan auto-renews until you cancel • 6-month & yearly are one-off payments'}
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -247,6 +291,12 @@ const styles = StyleSheet.create({
   kicker: { color: COLORS.secondary, fontSize: 11, letterSpacing: 3, fontWeight: '800', marginTop: 8 },
   title: { color: COLORS.text, fontSize: 44, fontWeight: '900', letterSpacing: -1.5, lineHeight: 44, marginTop: 6 },
   accentBar: { width: 50, height: 4, backgroundColor: COLORS.primary, marginTop: 12, marginBottom: 24 },
+  trialBanner: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.secondary, padding: 18, marginBottom: 20 },
+  trialBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', backgroundColor: COLORS.secondary, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 12 },
+  trialBadgeText: { color: '#000', fontWeight: '900', letterSpacing: 1.5, fontSize: 12 },
+  trialTitle: { color: COLORS.text, fontSize: 18, fontWeight: '900', letterSpacing: -0.3, marginBottom: 8 },
+  trialSubtitle: { color: COLORS.textDim, fontSize: 13, lineHeight: 19 },
+  disclaimer: { color: COLORS.text, fontSize: 12, textAlign: 'center', marginTop: 10, fontWeight: '700' },
   activeCard: { borderWidth: 1, borderColor: COLORS.secondary, backgroundColor: COLORS.surface, padding: 22, alignItems: 'center', marginBottom: 24 },
   activeTitle: { color: COLORS.text, fontSize: 22, fontWeight: '900', letterSpacing: 1, marginTop: 10 },
   activeText: { color: COLORS.textDim, fontSize: 14, textAlign: 'center', marginTop: 10, lineHeight: 22 },
