@@ -1,22 +1,26 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, Switch,
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, Switch, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth, COLORS } from '../../src/AuthContext';
-import { LANGUAGES } from '../../src/i18n';
+import { LANGUAGES, useLang } from '../../src/i18n';
+import { COUNTRY_OPTIONS, currencyForCountry } from '../../src/regions';
 import { isReminderEnabled, setReminderEnabled } from '../../src/notifications';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Profile() {
   const { user, api, signOut, refreshUser } = useAuth();
   const router = useRouter();
+  const { lang, setLang, country, setCountry, t } = useLang();
   const [newWeight, setNewWeight] = useState('');
   const [logs, setLogs] = useState<any[]>([]);
   const [weeks, setWeeks] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [remindersOn, setRemindersOn] = useState(true);
+  const [langPickerOpen, setLangPickerOpen] = useState(false);
+  const [regionPickerOpen, setRegionPickerOpen] = useState(false);
 
   useEffect(() => { (async () => setRemindersOn(await isReminderEnabled()))(); }, []);
 
@@ -58,9 +62,14 @@ export default function Profile() {
     router.replace('/auth/login');
   };
 
-  const setLanguage = async (lang: string) => {
-    await api('/profile', { method: 'PUT', body: JSON.stringify({ language: lang }) });
-    await refreshUser();
+  const setLanguage = async (newLang: string) => {
+    await setLang(newLang);
+    // best-effort sync to profile when logged in
+    try { await api('/profile', { method: 'PUT', body: JSON.stringify({ language: newLang }) }); await refreshUser(); } catch (_) {}
+  };
+  const changeCountry = async (cc: string) => {
+    await setCountry(cc);
+    try { await api('/profile', { method: 'PUT', body: JSON.stringify({ country: cc }) }); await refreshUser(); } catch (_) {}
   };
   const toggleWhistle = async (val: boolean) => {
     await api('/profile', { method: 'PUT', body: JSON.stringify({ whistle_enabled: val }) });
@@ -73,7 +82,10 @@ export default function Profile() {
   const targetWeight = profile.target_weight_kg;
   const lost = startWeight && currentWeight ? (startWeight - currentWeight).toFixed(1) : '0.0';
   const whistleOn = profile.whistle_enabled !== false;
-  const currentLang = profile.language || 'en';
+  const currentLang = lang;
+  const currentCountry = country || 'US';
+  const currentCountryOpt = COUNTRY_OPTIONS.find(c => c.code === currentCountry) || COUNTRY_OPTIONS[0];
+  const currentLangOpt = LANGUAGES.find(l => l.key === currentLang) || LANGUAGES[0];
   const genderEmoji = profile.gender === 'female' ? '👩' : '👨';
 
   return (
@@ -209,23 +221,33 @@ export default function Profile() {
               thumbColor={whistleOn ? COLORS.secondary : '#888'}
             />
           </View>
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingTitle}>{t('language')}</Text>
+              <Text style={styles.settingDesc}>{t('select_language')}</Text>
+            </View>
+            <TouchableOpacity
+              testID="open-lang-picker"
+              style={styles.pickerBtn}
+              onPress={() => setLangPickerOpen(true)}
+            >
+              <Text style={styles.pickerBtnText}>{currentLangOpt.native}</Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.textDim} />
+            </TouchableOpacity>
+          </View>
           <View style={[styles.settingRow, { borderBottomWidth: 0 }]}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.settingTitle}>LANGUAGE</Text>
-              <Text style={styles.settingDesc}>App language</Text>
+              <Text style={styles.settingTitle}>{t('region')} / {t('currency')}</Text>
+              <Text style={styles.settingDesc}>{t('select_region')}</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              {LANGUAGES.map(l => (
-                <TouchableOpacity
-                  key={l.key}
-                  testID={`lang-${l.key}`}
-                  style={[styles.langChip, currentLang === l.key && styles.langChipActive]}
-                  onPress={() => setLanguage(l.key)}
-                >
-                  <Text style={[styles.langText, currentLang === l.key && { color: '#000' }]}>{l.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TouchableOpacity
+              testID="open-region-picker"
+              style={styles.pickerBtn}
+              onPress={() => setRegionPickerOpen(true)}
+            >
+              <Text style={styles.pickerBtnText}>{currentCountryOpt.flag} {currentCountryOpt.currency}</Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.textDim} />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -244,6 +266,73 @@ export default function Profile() {
           <Text style={styles.editText}>EDIT PROFILE</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Language picker */}
+      <Modal visible={langPickerOpen} animationType="slide" transparent onRequestClose={() => setLangPickerOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>{t('select_language')}</Text>
+              <TouchableOpacity onPress={() => setLangPickerOpen(false)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 480 }}>
+              {LANGUAGES.map(l => {
+                const active = currentLang === l.key;
+                return (
+                  <TouchableOpacity
+                    key={l.key}
+                    testID={`lang-opt-${l.key}`}
+                    style={[styles.optRow, active && styles.optRowActive]}
+                    onPress={async () => { await setLanguage(l.key); setLangPickerOpen(false); }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.optName}>{l.native}</Text>
+                      <Text style={styles.optSub}>{l.label}{l.rtl ? ' • RTL' : ''}</Text>
+                    </View>
+                    {active && <Ionicons name="checkmark-circle" size={22} color={COLORS.secondary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Region / currency picker */}
+      <Modal visible={regionPickerOpen} animationType="slide" transparent onRequestClose={() => setRegionPickerOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>{t('select_region')}</Text>
+              <TouchableOpacity onPress={() => setRegionPickerOpen(false)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 480 }}>
+              {COUNTRY_OPTIONS.map(c => {
+                const active = currentCountry === c.code;
+                return (
+                  <TouchableOpacity
+                    key={c.code}
+                    testID={`region-opt-${c.code}`}
+                    style={[styles.optRow, active && styles.optRowActive]}
+                    onPress={async () => { await changeCountry(c.code); setRegionPickerOpen(false); }}
+                  >
+                    <Text style={{ fontSize: 22, marginRight: 12 }}>{c.flag}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.optName}>{c.name}</Text>
+                      <Text style={styles.optSub}>{c.currency} ({c.symbol})</Text>
+                    </View>
+                    {active && <Ionicons name="checkmark-circle" size={22} color={COLORS.secondary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -301,6 +390,16 @@ const styles = StyleSheet.create({
   langChip: { borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12, paddingVertical: 8 },
   langChipActive: { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary },
   langText: { color: COLORS.text, fontSize: 12, fontWeight: '800', letterSpacing: 1 },
+  pickerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: COLORS.surfaceElevated },
+  pickerBtnText: { color: COLORS.text, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: COLORS.bg, borderTopWidth: 2, borderTopColor: COLORS.primary, padding: 16, paddingBottom: 30 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 },
+  sheetTitle: { color: COLORS.text, fontSize: 16, fontWeight: '900', letterSpacing: 1 },
+  optRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  optRowActive: { backgroundColor: COLORS.surface },
+  optName: { color: COLORS.text, fontSize: 15, fontWeight: '800' },
+  optSub: { color: COLORS.textDim, fontSize: 12, marginTop: 2 },
   infoCard: { borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   infoLabel: { color: COLORS.textDim, fontSize: 11, letterSpacing: 2, fontWeight: '800' },

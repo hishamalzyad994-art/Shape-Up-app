@@ -8,7 +8,7 @@ import asyncio
 import logging
 from pathlib import Path
 from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any
 import uuid
 from datetime import datetime, timedelta, timezone
 import bcrypt
@@ -117,7 +117,8 @@ class ProfileUpdate(BaseModel):
     body_focus: Optional[List[str]] = None
     difficulty: Optional[Literal['easy', 'medium', 'hard', 'crazy']] = None
     target_reason: Optional[str] = None
-    language: Optional[Literal['en', 'ar']] = None
+    language: Optional[Literal['en', 'ar', 'es', 'fr', 'de', 'pt', 'it', 'hi', 'ja', 'tr']] = None
+    country: Optional[str] = None  # ISO 3166-1 alpha-2 — used as fallback for regional pricing.
     whistle_enabled: Optional[bool] = None
 
 class WeightLog(BaseModel):
@@ -589,12 +590,75 @@ async def chat_history(user=Depends(get_current_user)):
 # ============ STRIPE SUBSCRIPTIONS (one-time access passes via emergentintegrations) ============
 # User pays once for N days of access. After expiry → paywall + resubscribe prompt.
 PLAN_CONFIG = {
-    "monthly":   {"amount": 3.99,  "days": 30,  "label": "Monthly",  "display": "£3.99",  "recurring": True, "stripe_interval": "month", "interval_count": 1},
-    "sixmonths": {"amount": 19.99, "days": 180, "label": "6 Months", "display": "£19.99", "recurring": True, "stripe_interval": "month", "interval_count": 6},
-    "yearly":    {"amount": 34.99, "days": 365, "label": "Yearly",   "display": "£34.99", "recurring": True, "stripe_interval": "year",  "interval_count": 1},
+    "monthly":   {"days": 30,  "label": "Monthly",  "stripe_interval": "month", "interval_count": 1},
+    "sixmonths": {"days": 180, "label": "6 Months", "stripe_interval": "month", "interval_count": 6},
+    "yearly":    {"days": 365, "label": "Yearly",   "stripe_interval": "year",  "interval_count": 1},
 }
 TRIAL_DAYS = 3
 _recurring_price_cache: dict = {}
+
+# Regional pricing — purchase-power adjusted, charged in user's local currency.
+# Keys are ISO 3166-1 alpha-2 country codes (also a synthetic "EU" region for the eurozone).
+REGIONAL_PRICING: Dict[str, Dict[str, Any]] = {
+    "GB": {"currency": "gbp", "symbol": "£",    "code": "GBP", "monthly": 3.99,  "sixmonths": 19.99,  "yearly": 34.99,  "zero_decimal": False},
+    "US": {"currency": "usd", "symbol": "$",    "code": "USD", "monthly": 4.99,  "sixmonths": 24.99,  "yearly": 44.99,  "zero_decimal": False},
+    "CA": {"currency": "cad", "symbol": "CA$",  "code": "CAD", "monthly": 6.99,  "sixmonths": 34.99,  "yearly": 59.99,  "zero_decimal": False},
+    "AU": {"currency": "aud", "symbol": "A$",   "code": "AUD", "monthly": 7.99,  "sixmonths": 39.99,  "yearly": 69.99,  "zero_decimal": False},
+    "NZ": {"currency": "nzd", "symbol": "NZ$",  "code": "NZD", "monthly": 8.99,  "sixmonths": 44.99,  "yearly": 79.99,  "zero_decimal": False},
+    "EU": {"currency": "eur", "symbol": "€",    "code": "EUR", "monthly": 4.49,  "sixmonths": 22.99,  "yearly": 39.99,  "zero_decimal": False},
+    "CH": {"currency": "chf", "symbol": "CHF ", "code": "CHF", "monthly": 4.99,  "sixmonths": 24.99,  "yearly": 44.99,  "zero_decimal": False},
+    "AE": {"currency": "aed", "symbol": "AED ", "code": "AED", "monthly": 18.99, "sixmonths": 89.99,  "yearly": 159.99, "zero_decimal": False},
+    "SA": {"currency": "sar", "symbol": "SAR ", "code": "SAR", "monthly": 18.99, "sixmonths": 89.99,  "yearly": 159.99, "zero_decimal": False},
+    "QA": {"currency": "qar", "symbol": "QR ",  "code": "QAR", "monthly": 18.99, "sixmonths": 89.99,  "yearly": 159.99, "zero_decimal": False},
+    "KW": {"currency": "kwd", "symbol": "KD ",  "code": "KWD", "monthly": 1.49,  "sixmonths": 6.99,   "yearly": 12.99,  "zero_decimal": False},
+    "EG": {"currency": "egp", "symbol": "EGP ", "code": "EGP", "monthly": 99.00, "sixmonths": 499.00, "yearly": 899.00, "zero_decimal": False},
+    "IN": {"currency": "inr", "symbol": "₹",    "code": "INR", "monthly": 399.0, "sixmonths": 1999.0, "yearly": 3499.0, "zero_decimal": False},
+    "JP": {"currency": "jpy", "symbol": "¥",    "code": "JPY", "monthly": 600,   "sixmonths": 2980,   "yearly": 5400,   "zero_decimal": True},
+    "KR": {"currency": "krw", "symbol": "₩",    "code": "KRW", "monthly": 5900,  "sixmonths": 29900,  "yearly": 54900,  "zero_decimal": True},
+    "BR": {"currency": "brl", "symbol": "R$",   "code": "BRL", "monthly": 24.99, "sixmonths": 119.99, "yearly": 219.99, "zero_decimal": False},
+    "MX": {"currency": "mxn", "symbol": "MX$",  "code": "MXN", "monthly": 89.0,  "sixmonths": 449.0,  "yearly": 799.0,  "zero_decimal": False},
+    "ZA": {"currency": "zar", "symbol": "R",    "code": "ZAR", "monthly": 89.0,  "sixmonths": 449.0,  "yearly": 799.0,  "zero_decimal": False},
+    "TR": {"currency": "try", "symbol": "₺",    "code": "TRY", "monthly": 149.0, "sixmonths": 749.0,  "yearly": 1299.0, "zero_decimal": False},
+    "NG": {"currency": "ngn", "symbol": "₦",    "code": "NGN", "monthly": 3999,  "sixmonths": 19999,  "yearly": 34999,  "zero_decimal": False},
+    "SG": {"currency": "sgd", "symbol": "S$",   "code": "SGD", "monthly": 6.99,  "sixmonths": 34.99,  "yearly": 59.99,  "zero_decimal": False},
+    "HK": {"currency": "hkd", "symbol": "HK$",  "code": "HKD", "monthly": 39.0,  "sixmonths": 199.0,  "yearly": 349.0,  "zero_decimal": False},
+    "PH": {"currency": "php", "symbol": "₱",    "code": "PHP", "monthly": 249.0, "sixmonths": 1249.0, "yearly": 2199.0, "zero_decimal": False},
+    "ID": {"currency": "idr", "symbol": "Rp",   "code": "IDR", "monthly": 75000, "sixmonths": 375000, "yearly": 659000, "zero_decimal": False},
+}
+
+# Countries that share the Euro (mapped to the "EU" pricing row above).
+EUROZONE = {
+    "AT","BE","CY","DE","EE","ES","FI","FR","GR","IE","IT","LV","LT","LU",
+    "MT","NL","PT","SI","SK","HR","AD","MC","SM","VA","XK","ME",
+}
+
+
+def _resolve_pricing(country: Optional[str]) -> Dict[str, Any]:
+    """Return regional pricing for a country code. Falls back to USD if unknown."""
+    c = (country or "").strip().upper()
+    if not c:
+        return REGIONAL_PRICING["US"]
+    if c in EUROZONE:
+        return REGIONAL_PRICING["EU"]
+    return REGIONAL_PRICING.get(c, REGIONAL_PRICING["US"])
+
+
+def _format_money(p: Dict[str, Any], amount: float) -> str:
+    """Render a currency-formatted display string for the plan card."""
+    if p.get("zero_decimal"):
+        return f"{p['symbol']}{int(round(amount)):,}"
+    # Avoid trailing ".00" only when the symbol is multi-char like 'AED '
+    return f"{p['symbol']}{amount:,.2f}"
+
+
+def _plan_savings(plan_key: str, monthly_amount: float, plan_amount: float, months: int) -> Optional[str]:
+    if plan_key == "monthly":
+        return None
+    full = monthly_amount * months
+    if full <= 0:
+        return None
+    pct = round((1.0 - plan_amount / full) * 100)
+    return f"{pct}% off" if pct >= 5 else None
 
 
 async def get_or_create_recurring_price(plan_key: str) -> str:
@@ -625,25 +689,64 @@ async def get_or_create_recurring_price(plan_key: str) -> str:
 class CheckoutRequest(BaseModel):
     plan: Literal['monthly', 'sixmonths', 'yearly']
     origin_url: Optional[str] = None
+    country: Optional[str] = None  # ISO 3166-1 alpha-2 (e.g. "US", "GB", "DE"). Used for regional pricing.
 
 
 def is_subscription_active(user: dict) -> bool:
     return _user_has_active_subscription(user)
 
 
-@api_router.get("/subscription/plans")
-async def subscription_plans(user=Depends(get_current_user)):
-    has_used_trial = bool(user.get("has_used_trial", False))
+def _build_plan_list(country: Optional[str]) -> Dict[str, Any]:
+    pricing = _resolve_pricing(country)
+    monthly_amt = float(pricing["monthly"])
+    six_amt     = float(pricing["sixmonths"])
+    year_amt    = float(pricing["yearly"])
     return {
-        "currency": "GBP",
-        "trial_days": TRIAL_DAYS,
-        "trial_eligible": not has_used_trial,
+        "country": (country or "").upper() or None,
+        "currency": pricing["code"],
+        "symbol": pricing["symbol"],
+        "zero_decimal": pricing.get("zero_decimal", False),
         "plans": [
-            {"key": "monthly",   "label": "Monthly",   "amount": 3.99,  "display": "£3.99",  "period": "per month",        "savings": None,       "recurring": True},
-            {"key": "sixmonths", "label": "6 Months",  "amount": 19.99, "display": "£19.99", "period": "every 6 months",   "savings": "16% off",  "recurring": True},
-            {"key": "yearly",    "label": "Yearly",    "amount": 34.99, "display": "£34.99", "period": "per year",         "savings": "27% off",  "recurring": True},
+            {
+                "key": "monthly",
+                "label": "Monthly",
+                "amount": monthly_amt,
+                "display": _format_money(pricing, monthly_amt),
+                "period": "per month",
+                "savings": None,
+                "recurring": True,
+            },
+            {
+                "key": "sixmonths",
+                "label": "6 Months",
+                "amount": six_amt,
+                "display": _format_money(pricing, six_amt),
+                "period": "every 6 months",
+                "savings": _plan_savings("sixmonths", monthly_amt, six_amt, 6),
+                "recurring": True,
+            },
+            {
+                "key": "yearly",
+                "label": "Yearly",
+                "amount": year_amt,
+                "display": _format_money(pricing, year_amt),
+                "period": "per year",
+                "savings": _plan_savings("yearly", monthly_amt, year_amt, 12),
+                "recurring": True,
+            },
         ],
     }
+
+
+@api_router.get("/subscription/plans")
+async def subscription_plans(country: Optional[str] = None, user=Depends(get_current_user)):
+    has_used_trial = bool(user.get("has_used_trial", False))
+    payload = _build_plan_list(country)
+    payload.update({
+        "trial_days": TRIAL_DAYS,
+        "trial_eligible": not has_used_trial,
+    })
+    return payload
 
 
 @api_router.post("/subscription/checkout")
@@ -651,6 +754,12 @@ async def subscription_checkout(req: CheckoutRequest, user=Depends(get_current_u
     if not stripe_checkout:
         raise HTTPException(status_code=500, detail="Stripe not configured")
     cfg = PLAN_CONFIG[req.plan]
+    pricing = _resolve_pricing(req.country)
+    plan_amount = float(pricing[req.plan])
+    currency_code = pricing["currency"]
+    zero_decimal = bool(pricing.get("zero_decimal"))
+    unit_amount = int(round(plan_amount)) if zero_decimal else int(round(plan_amount * 100))
+
     origin = (req.origin_url or APP_BASE_URL).rstrip('/')
     success_url = f"{origin}/subscribe?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/subscribe?cancelled=1"
@@ -658,7 +767,13 @@ async def subscription_checkout(req: CheckoutRequest, user=Depends(get_current_u
     has_used_trial = bool(user.get("has_used_trial", False))
     trial_days = TRIAL_DAYS if not has_used_trial else 0
 
-    subscription_data = {"metadata": {"user_id": user["id"], "plan": req.plan, "days": str(cfg["days"])}}
+    subscription_data = {"metadata": {
+        "user_id": user["id"],
+        "plan": req.plan,
+        "days": str(cfg["days"]),
+        "country": (req.country or "").upper(),
+        "currency": currency_code,
+    }}
     if trial_days:
         subscription_data["trial_period_days"] = trial_days
 
@@ -671,9 +786,9 @@ async def subscription_checkout(req: CheckoutRequest, user=Depends(get_current_u
         mode="subscription",
         line_items=[{
             "price_data": {
-                "currency": "gbp",
+                "currency": currency_code,
                 "product_data": {"name": f"ShapeUp {cfg['label']}"},
-                "unit_amount": int(round(cfg["amount"] * 100)),
+                "unit_amount": unit_amount,
                 "recurring": recurring,
             },
             "quantity": 1,
@@ -688,8 +803,9 @@ async def subscription_checkout(req: CheckoutRequest, user=Depends(get_current_u
         "user_id": user["id"],
         "session_id": session.id,
         "plan": req.plan,
-        "amount": cfg["amount"],
-        "currency": "gbp",
+        "amount": plan_amount,
+        "currency": currency_code,
+        "country": (req.country or "").upper() or None,
         "mode": "subscription",
         "trial_days": trial_days,
         "payment_status": "pending",
@@ -699,7 +815,8 @@ async def subscription_checkout(req: CheckoutRequest, user=Depends(get_current_u
         "url": session.url,
         "session_id": session.id,
         "plan": req.plan,
-        "display": cfg["display"],
+        "display": _format_money(pricing, plan_amount),
+        "currency": pricing["code"],
         "recurring": True,
         "trial_days": trial_days,
     }

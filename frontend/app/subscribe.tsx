@@ -6,11 +6,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth, COLORS } from '../src/AuthContext';
+import { useLang } from '../src/i18n';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Subscribe() {
   const { api, refreshUser, user } = useAuth();
   const router = useRouter();
+  const { t, country: ctxCountry } = useLang();
   const { session_id } = useLocalSearchParams<{ session_id?: string }>();
   const [plans, setPlans] = useState<any[]>([]);
   const [status, setStatus] = useState<any>(null);
@@ -21,16 +23,20 @@ export default function Subscribe() {
   const [trialEligible, setTrialEligible] = useState<boolean>(true);
   const pollRef = useRef<any>(null);
 
+  const [currencyCode, setCurrencyCode] = useState<string>('USD');
+
   const load = useCallback(async () => {
     try {
-      const p = await api<any>('/subscription/plans');
+      const qs = ctxCountry ? `?country=${encodeURIComponent(ctxCountry)}` : '';
+      const p = await api<any>(`/subscription/plans${qs}`);
       setPlans(p.plans || []);
       setTrialDays(p.trial_days ?? 3);
       setTrialEligible(p.trial_eligible !== false);
+      setCurrencyCode(p.currency || 'USD');
       const s = await api<any>('/subscription/status');
       setStatus(s);
     } catch (_) {}
-  }, [api]);
+  }, [api, ctxCountry]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -85,7 +91,7 @@ export default function Subscribe() {
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
       const res = await api<any>('/subscription/checkout', {
         method: 'POST',
-        body: JSON.stringify({ plan, origin_url: origin }),
+        body: JSON.stringify({ plan, origin_url: origin, country: ctxCountry || undefined }),
       });
       if (Platform.OS === 'web') {
         window.location.href = res.url;
@@ -110,21 +116,21 @@ export default function Subscribe() {
           <Ionicons name="close" size={28} color={COLORS.text} />
         </TouchableOpacity>
 
-        <Text style={styles.kicker}>SHAPEUP PRO</Text>
-        <Text style={styles.title}>UNLOCK{'\n'}EVERYTHING</Text>
+        <Text style={styles.kicker}>{t('shapeup_pro')}</Text>
+        <Text style={styles.title}>{t('unlock_everything')}</Text>
         <View style={styles.accentBar} />
 
         {!status?.active && trialEligible && (
           <View style={styles.trialBanner} testID="trial-banner">
             <View style={styles.trialBadge}>
               <Ionicons name="gift" size={18} color="#000" />
-              <Text style={styles.trialBadgeText}>{trialDays} DAYS FREE TRIAL</Text>
+              <Text style={styles.trialBadgeText}>{t('three_days_free_trial')}</Text>
             </View>
-            <Text style={styles.trialTitle}>Try ShapeUp Pro free for {trialDays} days</Text>
+            <Text style={styles.trialTitle}>{t('try_pro_free')}</Text>
             <Text style={styles.trialSubtitle}>
-              Card required up front. You won't be charged today.{'\n'}
+              {t('card_required')}{'\n'}
               <Text style={{ fontWeight: '900', color: COLORS.text }}>
-                Cancel anytime before the trial ends to avoid being charged.
+                {t('cancel_anytime')}
               </Text>
             </Text>
           </View>
@@ -133,9 +139,9 @@ export default function Subscribe() {
         {status?.active ? (
           <View style={styles.activeCard} testID="sub-active-card">
             <Ionicons name="checkmark-circle" size={48} color={COLORS.secondary} />
-            <Text style={styles.activeTitle}>YOU'RE PRO ✨</Text>
+            <Text style={styles.activeTitle}>{t('you_are_pro')}</Text>
             <Text style={styles.activeText}>
-              Plan: <Text style={{ color: COLORS.secondary, fontWeight: '900' }}>{status.plan?.toUpperCase()}</Text>
+              {t('choose_plan').toUpperCase()}: <Text style={{ color: COLORS.secondary, fontWeight: '900' }}>{status.plan?.toUpperCase()}</Text>
               {'\n'}{status.auto_renew && !status.cancel_at_period_end
                 ? <>Renews on <Text style={{ color: COLORS.text, fontWeight: '900' }}>{expiresStr}</Text></>
                 : <>Access until <Text style={{ color: COLORS.text, fontWeight: '900' }}>{expiresStr}</Text></>}
@@ -144,7 +150,7 @@ export default function Subscribe() {
               )}
             </Text>
             <TouchableOpacity style={styles.continueBtn} onPress={() => router.replace('/(tabs)')}>
-              <Text style={styles.continueBtnText}>BACK TO APP</Text>
+              <Text style={styles.continueBtnText}>{t('back_to_app')}</Text>
             </TouchableOpacity>
             {status.auto_renew && !status.cancel_at_period_end && (
               <TouchableOpacity
@@ -169,7 +175,7 @@ export default function Subscribe() {
                   );
                 }}
               >
-                <Text style={styles.cancelBtnText}>CANCEL SUBSCRIPTION</Text>
+                <Text style={styles.cancelBtnText}>{t('cancel_subscription')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -183,18 +189,20 @@ export default function Subscribe() {
         )}
 
         <View style={styles.benefits}>
-          <Benefit icon="flame" text="Daily ongoing workouts" />
-          <Benefit icon="restaurant" text="Personalized meal plans" />
-          <Benefit icon="chatbubbles" text="24/7 AI Coach C chat" />
-          <Benefit icon="trending-up" text="Weekly progress reports" />
-          <Benefit icon="trophy" text="Streaks, achievements & badges" />
+          <Benefit icon="flame" text={t('benefit_workouts')} />
+          <Benefit icon="restaurant" text={t('benefit_meals')} />
+          <Benefit icon="chatbubbles" text={t('benefit_chat')} />
+          <Benefit icon="trending-up" text={t('benefit_reports')} />
+          <Benefit icon="trophy" text={t('benefit_streaks')} />
         </View>
 
-        <Text style={styles.sectionLbl}>CHOOSE YOUR PLAN</Text>
+        <Text style={styles.sectionLbl}>{t('choose_plan')}</Text>
         {plans.map(p => {
           const isYearly = p.key === 'yearly';
           const isMonthly = p.key === 'monthly';
           const highlight = isYearly;
+          const planLabel = p.key === 'monthly' ? t('monthly') : p.key === 'sixmonths' ? t('six_months') : t('yearly');
+          const planPeriod = p.key === 'monthly' ? t('per_month') : p.key === 'sixmonths' ? t('every_6_months') : t('per_year');
           return (
             <TouchableOpacity
               key={p.key}
@@ -205,28 +213,27 @@ export default function Subscribe() {
             >
               {highlight && (
                 <View style={styles.bestBadge}>
-                  <Text style={styles.bestText}>BEST VALUE</Text>
+                  <Text style={styles.bestText}>{t('best_value')}</Text>
                 </View>
               )}
               {isMonthly && (
                 <View style={[styles.bestBadge, { backgroundColor: COLORS.secondary }]}>
-                  <Text style={[styles.bestText, { color: '#000' }]}>AUTO-RENEW</Text>
+                  <Text style={[styles.bestText, { color: '#000' }]}>{t('auto_renew_badge')}</Text>
                 </View>
               )}
               <View style={styles.planLeft}>
-                <Text style={styles.planLabel}>{p.label.toUpperCase()}</Text>
+                <Text style={styles.planLabel}>{planLabel.toUpperCase()}</Text>
                 {trialEligible ? (
                   <>
-                    <Text style={styles.planPrice}>£0.00</Text>
+                    <Text style={styles.planPrice}>{t('free_for_3_days').toUpperCase()}</Text>
                     <Text style={styles.planPeriod}>
-                      <Text style={{ color: COLORS.secondary, fontWeight: '900' }}>FREE for {trialDays} days</Text>
-                      {'\n'}then {p.display} {p.period}
+                      <Text style={{ color: COLORS.text, fontWeight: '900' }}>{t('then_price')} {p.display}</Text> {planPeriod}
                     </Text>
                   </>
                 ) : (
                   <>
                     <Text style={styles.planPrice}>{p.display}</Text>
-                    <Text style={styles.planPeriod}>{p.period}</Text>
+                    <Text style={styles.planPeriod}>{planPeriod}</Text>
                   </>
                 )}
               </View>
@@ -249,24 +256,24 @@ export default function Subscribe() {
           {loading ? <ActivityIndicator color="#000" /> : (
             <Text style={styles.ctaText}>
               {status?.active
-                ? 'ALREADY ACTIVE'
+                ? t('already_active')
                 : trialEligible
-                  ? `START ${trialDays}-DAY FREE TRIAL`
-                  : 'SUBSCRIBE NOW'}
+                  ? t('start_free_trial')
+                  : t('subscribe_now')}
             </Text>
           )}
         </TouchableOpacity>
 
         {!status?.active && trialEligible && (
           <Text style={styles.disclaimer} testID="trial-disclaimer">
-            Cancel anytime before the trial ends to avoid being charged.
+            {t('cancel_anytime')}
           </Text>
         )}
 
         <Text style={styles.legal}>
-          {trialEligible && !status?.active
-            ? `${trialDays}-day free trial then auto-renews at the selected plan price until cancelled. Manage or cancel anytime from this screen.`
-            : 'Monthly plan auto-renews until you cancel • 6-month & yearly are one-off payments'}
+          {currencyCode ? `(${currencyCode}) ` : ''}{trialEligible && !status?.active
+            ? `${trialDays}-day free trial then auto-renews at the selected plan price until cancelled.`
+            : 'Auto-renews until cancelled.'}
         </Text>
       </ScrollView>
     </SafeAreaView>
