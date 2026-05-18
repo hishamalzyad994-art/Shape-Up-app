@@ -25,6 +25,12 @@ export default function Subscribe() {
   const pollRef = useRef<any>(null);
 
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+
+  // Cleanup any polling interval on unmount
+  useEffect(() => () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -143,7 +149,34 @@ export default function Subscribe() {
         body: JSON.stringify({ plan, origin_url: origin, country: ctxCountry || undefined }),
       });
       if (Platform.OS === 'web') {
-        window.location.href = res.url;
+        // The Emergent preview wraps the app in an iframe; Stripe Checkout
+        // sets X-Frame-Options: DENY which renders as a blank white page when
+        // we redirect the iframe. Open in a new tab instead and start polling
+        // for the session to flip to 'paid' on our backend.
+        const sid = res.session_id as string | undefined;
+        const url = res.url as string;
+        let opened: Window | null = null;
+        try { opened = window.open(url, '_blank', 'noopener'); } catch (_) { opened = null; }
+        if (!opened) {
+          // Popup blocked → break out of the iframe to the top frame, or
+          // last-resort: replace the iframe (legacy behaviour).
+          try {
+            if (window.top && window.top !== window) {
+              (window.top as Window).location.href = url;
+            } else {
+              window.location.href = url;
+            }
+          } catch (_) {
+            window.location.href = url;
+          }
+          return;
+        }
+        // Show waiting overlay and start polling
+        if (sid) {
+          setPendingSessionId(sid);
+          setPolling(true);
+          startWebPolling(sid);
+        }
       } else {
         await Linking.openURL(res.url);
       }
@@ -153,6 +186,31 @@ export default function Subscribe() {
       setLoading(false);
     }
   };
+
+  // Web-only polling for when the user pays in a new tab. We hit
+  // /subscription/poll/{session_id} every 4s for up to 6 minutes.
+  const startWebPolling = useCallback((sid: string) => {
+    if (pollRef.current) { clearInterval(pollRef.current); }
+    let attempts = 0;
+    const max = 90; // 6 minutes @ 4s
+    pollRef.current = setInterval(async () => {
+      attempts += 1;
+      try {
+        const r = await api<any>(`/subscription/poll/${sid}`);
+        if (r?.payment_status === 'paid' || r?.status === 'paid' || r?.active === true) {
+          clearInterval(pollRef.current); pollRef.current = null;
+          setPolling(false); setPendingSessionId(null);
+          await refreshUser(); await load();
+          Alert.alert('🎉 SUCCESS', `${trialEligible ? `Your ${trialDays}-day free trial has started!\n` : ''}You're Pro.`);
+          return;
+        }
+      } catch (_) {}
+      if (attempts >= max) {
+        clearInterval(pollRef.current); pollRef.current = null;
+        setPolling(false);
+      }
+    }, 4000);
+  }, [api, refreshUser, load, trialEligible, trialDays]);
 
   const expiresStr = status?.access_expires_at
     ? new Date(status.access_expires_at).toLocaleDateString()
@@ -326,6 +384,44 @@ export default function Subscribe() {
           </TouchableOpacity>
         )}
 
+        {/* Web-only: waiting-for-Stripe overlay when checkout was opened in a new tab */}
+        {polling && pendingSessionId && (
+          <View style={styles.waitingBox} testID="payment-waiting">
+            <ActivityIndicator size="large" color={COLORS.secondary} />
+            <Text style={styles.waitingTitle}>WAITING FOR PAYMENT…</Text>
+            <Text style={styles.waitingBody}>
+              We opened Stripe Checkout in a new tab. Once you finish there, this page will update automatically.
+            </Text>
+            <TouchableOpacity
+              testID="payment-recheck"
+              style={styles.waitingBtn}
+              onPress={async () => {
+                try {
+                  const r = await api<any>(`/subscription/poll/${pendingSessionId}`);
+                  if (r.payment_status === 'paid' || r.active) {
+                    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                    setPolling(false); setPendingSessionId(null);
+                    await refreshUser(); await load();
+                    Alert.alert('🎉 SUCCESS', `${trialEligible ? `Your ${trialDays}-day free trial has started!\n` : ''}You're Pro.`);
+                  } else {
+                    Alert.alert('Still pending', 'Payment is not yet confirmed. If you completed checkout, please wait a few seconds.');
+                  }
+                } catch (e: any) { Alert.alert('Error', e.message || 'Check failed'); }
+              }}
+            >
+              <Text style={styles.waitingBtnText}>I'VE PAID — CHECK NOW</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                setPolling(false); setPendingSessionId(null);
+              }}
+            >
+              <Text style={styles.waitingCancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <Text style={styles.legal}>
           {currencyCode ? `(${currencyCode}) ` : ''}{trialEligible && !status?.active
             ? `${trialDays}-day free trial then auto-renews at the selected plan price until cancelled.`
@@ -362,6 +458,12 @@ const styles = StyleSheet.create({
   disclaimer: { color: COLORS.text, fontSize: 12, textAlign: 'center', marginTop: 10, fontWeight: '700' },
   restoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14, paddingVertical: 8 },
   restoreText: { color: COLORS.textDim, fontSize: 11, letterSpacing: 2, fontWeight: '800' },
+  waitingBox: { marginTop: 20, padding: 22, backgroundColor: COLORS.surface, borderWidth: 2, borderColor: COLORS.secondary, alignItems: 'center' },
+  waitingTitle: { color: COLORS.text, fontSize: 14, fontWeight: '900', letterSpacing: 2, marginTop: 14 },
+  waitingBody: { color: COLORS.textDim, fontSize: 12, marginTop: 8, textAlign: 'center', lineHeight: 18 },
+  waitingBtn: { marginTop: 16, backgroundColor: COLORS.secondary, paddingVertical: 14, paddingHorizontal: 20, alignSelf: 'stretch', alignItems: 'center' },
+  waitingBtnText: { color: '#000', fontWeight: '900', letterSpacing: 1.5, fontSize: 13 },
+  waitingCancel: { color: COLORS.textDim, fontSize: 12, marginTop: 10, fontWeight: '700' },
   activeCard: { borderWidth: 1, borderColor: COLORS.secondary, backgroundColor: COLORS.surface, padding: 22, alignItems: 'center', marginBottom: 24 },
   activeTitle: { color: COLORS.text, fontSize: 22, fontWeight: '900', letterSpacing: 1, marginTop: 10 },
   activeText: { color: COLORS.textDim, fontSize: 14, textAlign: 'center', marginTop: 10, lineHeight: 22 },
