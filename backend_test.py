@@ -1,181 +1,363 @@
-"""Backend tests for ShapeUp 3-day trial subscription flow."""
+"""Backend tests for ShapeUp - AI Food Scan endpoints + regressions."""
 import os
 import sys
-import time
 import uuid
+import base64
 import json
-import asyncio
 import requests
 
 BASE = os.environ.get("BACKEND_BASE_URL", "https://slim-challenge-5.preview.emergentagent.com").rstrip("/")
 API = f"{BASE}/api"
 
-MONGO_URL = "mongodb://localhost:27017"
-DB_NAME = "changeyourself_db"
+TEST_EMAIL = "test@cy.com"
+TEST_PASSWORD = "pass123"
+
+# Unsplash food images (JPEG)
+SALAD_URL = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400"
+PIZZA_URL = "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400"
+
+results = []  # (label, ok, detail)
 
 
-def _print(label, ok, detail=""):
+def _log(label, ok, detail=""):
     status = "PASS" if ok else "FAIL"
-    print(f"[{status}] {label}" + (f" :: {detail}" if detail else ""))
+    line = f"[{status}] {label}" + (f" :: {detail}" if detail else "")
+    print(line)
+    results.append((label, ok, detail))
     return ok
 
 
-def register_fresh():
-    email = f"trial_{uuid.uuid4().hex[:10]}@cy.com"
-    r = requests.post(f"{API}/auth/register", json={"email": email, "password": "pass123", "name": "T"}, timeout=30)
-    assert r.status_code == 200, f"register failed: {r.status_code} {r.text}"
-    data = r.json()
-    return email, data["token"], data["user"]
-
-
-def auth_headers(token):
+def auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def flip_has_used_trial(email):
-    from pymongo import MongoClient
-    client = MongoClient(MONGO_URL)
-    res = client[DB_NAME].users.update_one({"email": email.lower()}, {"$set": {"has_used_trial": True}})
-    client.close()
-    return res.modified_count
-
-
-def test_subscription_plans_trial_eligible(token):
-    r = requests.get(f"{API}/subscription/plans", headers=auth_headers(token), timeout=30)
+def register_fresh():
+    email = f"food_{uuid.uuid4().hex[:10]}@cy.com"
+    r = requests.post(f"{API}/auth/register", json={"email": email, "password": "pass123", "name": "FoodTester"}, timeout=30)
     if r.status_code != 200:
-        return _print("GET /subscription/plans (trial eligible)", False, f"{r.status_code} {r.text}")
-    body = r.json()
-    ok = (
-        body.get("trial_days") == 3
-        and body.get("trial_eligible") is True
-        and isinstance(body.get("plans"), list)
-        and len(body["plans"]) == 3
-    )
-    if not ok:
-        return _print("GET /subscription/plans (trial eligible)", False, json.dumps(body))
-    # Check plan details
-    by_key = {p["key"]: p for p in body["plans"]}
-    expected = {"monthly": (3.99, "£3.99"), "sixmonths": (19.99, "£19.99"), "yearly": (34.99, "£34.99")}
-    for k, (amt, disp) in expected.items():
-        p = by_key.get(k)
-        if not p or p.get("amount") != amt or p.get("display") != disp:
-            return _print("GET /subscription/plans (trial eligible)", False, f"plan {k} mismatch: {p}")
-    return _print("GET /subscription/plans (trial eligible)", True, f"plans={list(by_key.keys())}")
-
-
-def test_checkout(token, plan, expected_trial_days, label):
-    r = requests.post(
-        f"{API}/subscription/checkout",
-        headers=auth_headers(token),
-        json={"plan": plan, "origin_url": "http://localhost:3000"},
-        timeout=60,
-    )
-    if r.status_code != 200:
-        return _print(f"POST /subscription/checkout {label} ({plan})", False, f"{r.status_code} {r.text}")
-    body = r.json()
-    url = body.get("url", "")
-    has_url = ("checkout.stripe.com" in url) or ("integrations.emergentagent.com" in url) or ("stripe.com" in url)
-    ok = (
-        has_url
-        and isinstance(body.get("session_id"), str) and len(body["session_id"]) > 0
-        and body.get("plan") == plan
-        and body.get("trial_days") == expected_trial_days
-        and body.get("recurring") is True
-    )
-    if not ok:
-        return _print(f"POST /subscription/checkout {label} ({plan})", False, json.dumps({k: body.get(k) for k in ["url","session_id","plan","trial_days","recurring"]}))
-    return _print(f"POST /subscription/checkout {label} ({plan})", True, f"trial_days={body['trial_days']} url_ok={has_url}")
-
-
-def test_plans_after_trial_used(token):
-    r = requests.get(f"{API}/subscription/plans", headers=auth_headers(token), timeout=30)
-    if r.status_code != 200:
-        return _print("GET /subscription/plans (post-trial)", False, f"{r.status_code} {r.text}")
-    body = r.json()
-    if body.get("trial_eligible") is not False:
-        return _print("GET /subscription/plans (post-trial)", False, f"trial_eligible={body.get('trial_eligible')}")
-    return _print("GET /subscription/plans (post-trial)", True, "trial_eligible=false")
-
-
-def test_subscription_status(token, label="status"):
-    r = requests.get(f"{API}/subscription/status", headers=auth_headers(token), timeout=30)
-    return _print(f"GET /subscription/status ({label})", r.status_code == 200, f"{r.status_code}")
-
-
-def test_workouts_today(token, expect_402=False):
-    r = requests.get(f"{API}/workouts/today", headers=auth_headers(token), timeout=30)
-    if expect_402:
-        ok = r.status_code == 402
-        return _print("GET /workouts/today (no sub, expect 402)", ok, str(r.status_code))
-    return _print("GET /workouts/today", r.status_code == 200, f"{r.status_code} {r.text[:200] if r.status_code!=200 else ''}")
-
-
-def test_exercises_library(token, expect_402=False):
-    r = requests.get(f"{API}/exercises/library", headers=auth_headers(token), timeout=30)
-    if expect_402:
-        ok = r.status_code == 402
-        return _print("GET /exercises/library (no sub, expect 402)", ok, str(r.status_code))
-    return _print("GET /exercises/library", r.status_code == 200, f"{r.status_code}")
-
-
-def test_chat(token, expect_402=False):
-    r = requests.post(f"{API}/chat", headers=auth_headers(token), json={"message": "Give me a quick 2-line motivation"}, timeout=90)
-    if expect_402:
-        ok = r.status_code == 402
-        return _print("POST /chat (no sub, expect 402)", ok, str(r.status_code))
-    return _print("POST /chat", r.status_code == 200, f"{r.status_code} {r.text[:200] if r.status_code!=200 else ''}")
+        raise RuntimeError(f"register failed: {r.status_code} {r.text}")
+    return email, r.json()["token"]
 
 
 def login(email, password):
     r = requests.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=30)
-    assert r.status_code == 200, f"login failed: {r.status_code} {r.text}"
+    if r.status_code != 200:
+        raise RuntimeError(f"login failed for {email}: {r.status_code} {r.text}")
     return r.json()["token"]
 
 
+def download_b64(url):
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+    return base64.b64encode(r.content).decode("ascii"), r.content
+
+
+# ===================== TESTS =====================
+
+def test_food_scan_paywall(fresh_token):
+    r = requests.post(f"{API}/food/scan",
+                      headers=auth(fresh_token),
+                      json={"image_base64": "abcabcabc" * 50},
+                      timeout=60)
+    return _log("food/scan paywall (fresh user → 402)",
+                r.status_code == 402,
+                f"status={r.status_code}, body={r.text[:160]}")
+
+
+def test_food_log_paywall(fresh_token):
+    r = requests.post(f"{API}/food/log",
+                      headers=auth(fresh_token),
+                      json={"name": "x", "calories": 100, "protein_g": 1, "carbs_g": 1, "fats_g": 1},
+                      timeout=30)
+    return _log("food/log paywall (fresh user → 402)",
+                r.status_code == 402,
+                f"status={r.status_code}")
+
+
+def test_food_today_paywall(fresh_token):
+    r = requests.get(f"{API}/food/today", headers=auth(fresh_token), timeout=30)
+    return _log("food/today paywall (fresh user → 402)",
+                r.status_code == 402,
+                f"status={r.status_code}")
+
+
+def test_food_delete_paywall(fresh_token):
+    r = requests.delete(f"{API}/food/log/bogus-id", headers=auth(fresh_token), timeout=30)
+    return _log("food/log delete paywall (fresh user → 402)",
+                r.status_code == 402,
+                f"status={r.status_code}")
+
+
+def test_food_scan_invalid_empty(token):
+    r = requests.post(f"{API}/food/scan",
+                      headers=auth(token),
+                      json={"image_base64": ""},
+                      timeout=30)
+    return _log("food/scan invalid empty image (→ 400/422)",
+                r.status_code in (400, 422),
+                f"status={r.status_code}")
+
+
+def test_food_scan_invalid_short(token):
+    r = requests.post(f"{API}/food/scan",
+                      headers=auth(token),
+                      json={"image_base64": "abc"},
+                      timeout=30)
+    return _log("food/scan invalid short image (→ 400/422)",
+                r.status_code in (400, 422),
+                f"status={r.status_code}")
+
+
+def test_food_scan_real_image(token, b64_image, label):
+    r = requests.post(f"{API}/food/scan",
+                      headers=auth(token),
+                      json={"image_base64": b64_image, "note": "single serving"},
+                      timeout=120)
+    if r.status_code != 200:
+        return _log(f"food/scan real image ({label})", False, f"status={r.status_code} body={r.text[:200]}")
+    body = r.json()
+    required = ["name", "portion", "calories", "protein_g", "carbs_g", "fats_g", "confidence", "note"]
+    missing = [k for k in required if k not in body]
+    if missing:
+        return _log(f"food/scan real image ({label})", False, f"missing keys: {missing} body={body}")
+    cals = body.get("calories", 0)
+    conf_ok = body.get("confidence") in ("low", "medium", "high")
+    plausible = 50 <= cals <= 2500  # generous range; we'll separately log if outside 100-1500
+    ok = plausible and conf_ok and isinstance(body.get("name"), str)
+    detail = f"name={body.get('name')!r}, cals={cals}, P/C/F={body.get('protein_g')}/{body.get('carbs_g')}/{body.get('fats_g')}, conf={body.get('confidence')}"
+    if cals < 100 or cals > 1500:
+        detail += " [WARN: outside 100-1500 expected range]"
+    return _log(f"food/scan real image ({label})", ok, detail), body
+
+
+def test_food_log_creates(token, payload):
+    r = requests.post(f"{API}/food/log", headers=auth(token), json=payload, timeout=30)
+    if r.status_code != 200:
+        _log(f"food/log create ({payload.get('name')})", False, f"status={r.status_code} body={r.text[:200]}")
+        return None
+    body = r.json()
+    entry = body.get("entry")
+    items = body.get("items")
+    totals = body.get("totals")
+    ok = (
+        entry and entry.get("id") and entry.get("name") == payload["name"]
+        and isinstance(items, list) and isinstance(totals, dict)
+        and {"calories", "protein_g", "carbs_g", "fats_g"}.issubset(totals.keys())
+        and body.get("date")
+    )
+    _log(f"food/log create ({payload.get('name')})", ok,
+         f"id={entry.get('id') if entry else None}, totals={totals}, items_n={len(items) if items else 0}")
+    return body
+
+
+def test_food_today_totals(token, expected_count=None, expected_totals=None):
+    r = requests.get(f"{API}/food/today", headers=auth(token), timeout=30)
+    if r.status_code != 200:
+        _log("food/today", False, f"status={r.status_code} body={r.text[:200]}")
+        return None
+    body = r.json()
+    items = body.get("items", [])
+    totals = body.get("totals", {})
+    date = body.get("date")
+    ok = isinstance(items, list) and isinstance(totals, dict) and date
+    if expected_count is not None:
+        ok = ok and len(items) >= expected_count
+    detail = f"date={date}, items={len(items)}, totals={totals}"
+    if expected_totals is not None:
+        cals_match = totals.get("calories") == expected_totals["calories"]
+        p_match = round(float(totals.get("protein_g", 0)), 1) == round(expected_totals["protein_g"], 1)
+        c_match = round(float(totals.get("carbs_g", 0)), 1) == round(expected_totals["carbs_g"], 1)
+        f_match = round(float(totals.get("fats_g", 0)), 1) == round(expected_totals["fats_g"], 1)
+        ok = ok and cals_match and p_match and c_match and f_match
+        detail += f" | expected_match cals={cals_match} P={p_match} C={c_match} F={f_match}"
+    _log("food/today totals", ok, detail)
+    return body
+
+
+def test_food_delete(token, entry_id, expected_drop):
+    # snapshot before
+    before = requests.get(f"{API}/food/today", headers=auth(token), timeout=30).json()
+    r = requests.delete(f"{API}/food/log/{entry_id}", headers=auth(token), timeout=30)
+    if r.status_code != 200:
+        _log("food/log delete", False, f"status={r.status_code} body={r.text[:200]}")
+        return None
+    after = r.json()
+    bt = before["totals"]
+    at = after["totals"]
+    drop_cals = bt["calories"] - at["calories"]
+    drop_p = round(bt["protein_g"] - at["protein_g"], 1)
+    drop_c = round(bt["carbs_g"] - at["carbs_g"], 1)
+    drop_f = round(bt["fats_g"] - at["fats_g"], 1)
+    ok = (drop_cals == expected_drop["calories"]
+          and abs(drop_p - expected_drop["protein_g"]) < 0.2
+          and abs(drop_c - expected_drop["carbs_g"]) < 0.2
+          and abs(drop_f - expected_drop["fats_g"]) < 0.2)
+    _log("food/log delete totals drop", ok,
+         f"drop cals={drop_cals} P={drop_p} C={drop_c} F={drop_f} | expected={expected_drop}")
+    return after
+
+
+def test_food_delete_bogus(token):
+    r = requests.delete(f"{API}/food/log/does-not-exist-{uuid.uuid4().hex}", headers=auth(token), timeout=30)
+    return _log("food/log delete bogus id (→ 404)", r.status_code == 404, f"status={r.status_code}")
+
+
+# ===================== REGRESSIONS =====================
+
+def test_regression_calories(token):
+    r = requests.get(f"{API}/calories", headers=auth(token), timeout=30)
+    return _log("regression GET /calories", r.status_code == 200, f"status={r.status_code}")
+
+
+def test_regression_plans_gb(token):
+    r = requests.get(f"{API}/subscription/plans?country=GB", headers=auth(token), timeout=30)
+    if r.status_code != 200:
+        return _log("regression GET /subscription/plans?country=GB", False, f"status={r.status_code}")
+    body = r.json()
+    ok = body.get("currency") == "GBP" and len(body.get("plans", [])) == 3
+    return _log("regression GET /subscription/plans?country=GB", ok, f"currency={body.get('currency')}")
+
+
+def test_regression_workouts_today(token):
+    r = requests.get(f"{API}/workouts/today", headers=auth(token), timeout=30)
+    return _log("regression GET /workouts/today", r.status_code == 200, f"status={r.status_code}")
+
+
+def test_regression_chat_history(token):
+    r = requests.get(f"{API}/chat/history", headers=auth(token), timeout=30)
+    return _log("regression GET /chat/history", r.status_code == 200, f"status={r.status_code}")
+
+
+# ===================== MAIN =====================
+
 def main():
-    print(f"Backend base: {API}")
-    results = []
+    print(f"Testing against {API}")
+    print(f"Using test user: {TEST_EMAIL}")
 
-    # === Step 1: Fresh user, trial-eligible plans ===
-    email, token, _ = register_fresh()
-    print(f"Fresh user: {email}")
-    results.append(("plans_trial_eligible", test_subscription_plans_trial_eligible(token)))
+    # === Fresh user paywall tests ===
+    fresh_email, fresh_token = register_fresh()
+    print(f"Fresh user: {fresh_email}")
+    test_food_scan_paywall(fresh_token)
+    test_food_log_paywall(fresh_token)
+    test_food_today_paywall(fresh_token)
+    test_food_delete_paywall(fresh_token)
 
-    # === Step 2: Checkout for all three plans, trial_days=3 ===
-    results.append(("checkout_monthly_trial", test_checkout(token, "monthly", 3, "trial-eligible")))
-    results.append(("checkout_sixmonths_trial", test_checkout(token, "sixmonths", 3, "trial-eligible")))
-    results.append(("checkout_yearly_trial", test_checkout(token, "yearly", 3, "trial-eligible")))
-
-    # === Step 3: Flip has_used_trial and re-test ===
-    modified = flip_has_used_trial(email)
-    print(f"DB: has_used_trial flipped, modified_count={modified}")
-    results.append(("plans_post_trial", test_plans_after_trial_used(token)))
-    results.append(("checkout_monthly_post_trial", test_checkout(token, "monthly", 0, "post-trial")))
-
-    # === Step 4: Regression endpoints ===
-    # Subscription status on fresh user (no active sub) - should still return 200
-    results.append(("subscription_status_fresh", test_subscription_status(token, "fresh user")))
-
-    # Workouts/today, /exercises/library, /chat require active subscription.
-    # Fresh user has no subscription -> expect 402. Use the seeded test@cy.com user (has_used_trial=true, subscribed) for happy path.
-    print("\n-- Regression with test@cy.com (subscribed user) --")
+    # === Subscribed user tests ===
     try:
-        sub_token = login("test@cy.com", "pass123")
-        results.append(("workouts_today_subscribed", test_workouts_today(sub_token)))
-        results.append(("exercises_library_subscribed", test_exercises_library(sub_token)))
-        results.append(("subscription_status_subscribed", test_subscription_status(sub_token, "subscribed user")))
-        results.append(("chat_subscribed", test_chat(sub_token)))
+        sub_token = login(TEST_EMAIL, TEST_PASSWORD)
     except Exception as e:
-        print(f"[FAIL] login test@cy.com :: {e}")
-        results.append(("login_test_cy", False))
+        _log("login test@cy.com", False, str(e))
+        return print_summary()
 
-    print("\n==== SUMMARY ====")
-    failed = [k for k, v in results if not v]
-    for k, v in results:
-        print(f"  {'PASS' if v else 'FAIL'}  {k}")
-    print(f"\nTotal: {len(results)}, Passed: {len(results)-len(failed)}, Failed: {len(failed)}")
-    return 0 if not failed else 1
+    # Verify subscription is active
+    r = requests.get(f"{API}/subscription/status", headers=auth(sub_token), timeout=30)
+    sub_status = r.json() if r.status_code == 200 else {}
+    print(f"test@cy.com subscription status: {sub_status}")
+    if not sub_status.get("active"):
+        _log("test@cy.com has active subscription", False, f"status={sub_status}")
+        return print_summary()
+    _log("test@cy.com has active subscription", True)
+
+    # Invalid image inputs
+    test_food_scan_invalid_empty(sub_token)
+    test_food_scan_invalid_short(sub_token)
+
+    # Real image scan
+    try:
+        salad_b64, _ = download_b64(SALAD_URL)
+        print(f"Downloaded salad image: {len(salad_b64)} b64 chars")
+    except Exception as e:
+        _log("download salad image", False, str(e))
+        salad_b64 = None
+
+    scan_body = None
+    if salad_b64:
+        out = test_food_scan_real_image(sub_token, salad_b64, "salad")
+        if isinstance(out, tuple):
+            _, scan_body = out
+
+    # Try pizza too if salad fails or for extra coverage
+    try:
+        pizza_b64, _ = download_b64(PIZZA_URL)
+    except Exception as e:
+        _log("download pizza image", False, str(e))
+        pizza_b64 = None
+    if pizza_b64:
+        out = test_food_scan_real_image(sub_token, pizza_b64, "pizza")
+        if isinstance(out, tuple) and not scan_body:
+            _, scan_body = out
+
+    # Clean today's log first (delete all existing entries to start fresh)
+    today_before = requests.get(f"{API}/food/today", headers=auth(sub_token), timeout=30).json()
+    for it in today_before.get("items", []):
+        requests.delete(f"{API}/food/log/{it['id']}", headers=auth(sub_token), timeout=30)
+    print(f"Cleaned {len(today_before.get('items', []))} existing food log entries for today")
+
+    # Log 2 meals
+    meal1 = {"name": "Grilled Chicken Salad", "calories": 420, "protein_g": 38.0, "carbs_g": 18.0, "fats_g": 22.0, "portion": "1 bowl"}
+    meal2 = {"name": "Margherita Pizza Slice", "calories": 285, "protein_g": 12.0, "carbs_g": 36.0, "fats_g": 10.0, "portion": "1 slice"}
+
+    r1 = test_food_log_creates(sub_token, meal1)
+    r2 = test_food_log_creates(sub_token, meal2)
+
+    if r1 and r2:
+        # After 2 meals, totals should sum
+        expected_totals = {
+            "calories": meal1["calories"] + meal2["calories"],
+            "protein_g": meal1["protein_g"] + meal2["protein_g"],
+            "carbs_g": meal1["carbs_g"] + meal2["carbs_g"],
+            "fats_g": meal1["fats_g"] + meal2["fats_g"],
+        }
+        # Verify r2's response totals reflect both
+        r2_totals = r2.get("totals", {})
+        sum_ok = (
+            r2_totals.get("calories") == expected_totals["calories"]
+            and round(float(r2_totals.get("protein_g", 0)), 1) == round(expected_totals["protein_g"], 1)
+            and round(float(r2_totals.get("carbs_g", 0)), 1) == round(expected_totals["carbs_g"], 1)
+            and round(float(r2_totals.get("fats_g", 0)), 1) == round(expected_totals["fats_g"], 1)
+        )
+        _log("food/log returns correct totals (sum of 2 entries)", sum_ok,
+             f"got={r2_totals} expected={expected_totals}")
+
+        test_food_today_totals(sub_token, expected_count=2, expected_totals=expected_totals)
+
+        # Delete meal1, totals should drop by meal1's macros
+        entry1_id = r1["entry"]["id"]
+        drop_expected = {"calories": meal1["calories"], "protein_g": meal1["protein_g"], "carbs_g": meal1["carbs_g"], "fats_g": meal1["fats_g"]}
+        test_food_delete(sub_token, entry1_id, drop_expected)
+
+        # Verify today now has only meal2
+        expected_after = {
+            "calories": meal2["calories"],
+            "protein_g": meal2["protein_g"],
+            "carbs_g": meal2["carbs_g"],
+            "fats_g": meal2["fats_g"],
+        }
+        test_food_today_totals(sub_token, expected_count=1, expected_totals=expected_after)
+
+    # Bogus delete
+    test_food_delete_bogus(sub_token)
+
+    # === Regressions ===
+    test_regression_calories(sub_token)
+    test_regression_plans_gb(sub_token)
+    test_regression_workouts_today(sub_token)
+    test_regression_chat_history(sub_token)
+
+    return print_summary()
+
+
+def print_summary():
+    print("\n=== SUMMARY ===")
+    passed = sum(1 for _, ok, _ in results if ok)
+    total = len(results)
+    print(f"{passed}/{total} passed")
+    for label, ok, detail in results:
+        if not ok:
+            print(f"  FAIL: {label} :: {detail}")
+    return passed == total
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    success = main()
+    sys.exit(0 if success else 1)

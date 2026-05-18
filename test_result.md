@@ -144,6 +144,66 @@ backend:
         agent: "testing"
         comment: "Regression: GET /api/subscription/status (fresh + subscribed), GET /api/workouts/today, GET /api/exercises/library, POST /api/chat (LLM) all return 200 for the subscribed test@cy.com user. PASS."
 
+  - task: "AI Food Scan — POST /api/food/scan (Pro-only, vision LLM)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Pro-gated vision LLM endpoint. Accepts {image_base64, note?}. Calls Claude Sonnet 4.5 via emergentintegrations.ImageContent. Returns {name, portion, calories, protein_g, carbs_g, fats_g, confidence, note}. Rejects images < 100 chars with 400."
+      - working: true
+        agent: "testing"
+        comment: "Verified via /app/backend_test.py against external URL with test@cy.com (subscribed). (a) Salad image (Unsplash JPEG, 52KB b64) → 200 with name='Grilled salmon poke bowl', calories=485, P/C/F=32/48/16, confidence='medium'. (b) Pizza image → 200 with name='BBQ chicken pizza', calories=850, P/C/F=45/88/32, confidence='medium'. Both within plausible 100-1500 kcal range. All required keys present. (c) Empty image_base64='' → 400. (d) Short image_base64='abc' → 400. (e) Fresh non-subscribed user (food_<rand>@cy.com) → 402 'Subscription required'. PASS."
+
+  - task: "AI Food Scan — POST /api/food/log (Pro-only)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Persists a meal entry to db.food_logs keyed by user_id + date_key. Returns {entry, items, totals, date}."
+      - working: true
+        agent: "testing"
+        comment: "Logged 2 meals (Grilled Chicken Salad: 420 kcal / 38P / 18C / 22F; Margherita Pizza Slice: 285 kcal / 12P / 36C / 10F). First log → totals={420,38,18,22}, items_n=1. Second log → totals={705,50,54,32}, items_n=2. Totals correctly reflect the sum of items. entry includes id, name, calories, macros. Fresh non-subscribed user → 402. PASS."
+
+  - task: "AI Food Scan — GET /api/food/today (Pro-only)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Returns today's meals + aggregated totals for the user."
+      - working: true
+        agent: "testing"
+        comment: "After logging 2 meals, GET /food/today returned items=2, totals={calories:705, protein_g:50.0, carbs_g:54.0, fats_g:32.0}, date='2026-05-18' — exact sum of the 2 entries. After deleting one entry, returned items=1, totals={285,12,36,10}. Fresh non-subscribed user → 402. PASS."
+
+  - task: "AI Food Scan — DELETE /api/food/log/{entry_id} (Pro-only)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Deletes entry by id+user_id; 404 if not found; returns refreshed today totals."
+      - working: true
+        agent: "testing"
+        comment: "Deleting first entry (420 kcal / 38P / 18C / 22F) → totals dropped by exactly that amount. Bogus id → 404 'Entry not found'. Fresh non-subscribed user → 402. PASS."
+
 frontend:
   - task: "Subscribe screen shows 3-day free trial UI and disclaimer"
     implemented: true
@@ -167,16 +227,16 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Subscription plans endpoint exposes trial_days and trial_eligible"
-    - "Stripe checkout session creates a 3-day trial for trial-eligible users"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "main"
-    message: "Please verify the 3-day free trial backend flow only. (1) Register a fresh user, hit GET /api/subscription/plans → expect trial_days=3, trial_eligible=true. (2) POST /api/subscription/checkout with plan='monthly' → expect 200, url containing 'checkout.stripe.com', trial_days=3 in the response body. (3) Flip user.has_used_trial=true in Mongo and POST /api/subscription/checkout again → expect trial_days=0. Use test credentials from /app/memory/test_credentials.md or create a new user. Do NOT run frontend tests."
+    message: "ITERATION 8 added: AI Food Scan feature. New backend endpoints (all Pro-only): POST /api/food/scan (vision LLM — Claude Sonnet 4.5 vision via emergentintegrations.ImageContent — takes base64 image, returns name/portion/calories/protein/carbs/fats/confidence/note JSON); POST /api/food/log (saves a meal); GET /api/food/today (today's meals + totals); DELETE /api/food/log/{id}. Manual end-to-end test passed: scan → log → today → delete all returned 200. PLEASE verify these endpoints: (1) scan blocks 402 for non-subscribed users (use trial6171@cy.com), (2) scan returns valid JSON for a real food image (the test uses test@cy.com which has been granted an active subscription in mongo), (3) log + today + delete are idempotent and totals math correct, (4) scan rejects empty/blank images with 422 or 400. Use a small JPEG/PNG from any public unsplash food URL e.g. https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400. Frontend: Diet tab now shows a 'SCAN YOUR FOOD' CTA that opens a modal — DO NOT test frontend without explicit user permission."
+  - agent: "testing"
+    message: "AI Food Scan backend tests COMPLETE — 20/20 PASS via /app/backend_test.py against external URL. (1) Paywall regression: fresh non-subscribed user (food_<rand>@cy.com) gets 402 'Subscription required' on all 4 endpoints (scan/log/today/delete). (2) POST /api/food/scan with real Unsplash JPEGs: salad bowl → 'Grilled salmon poke bowl' 485 kcal / 32P / 48C / 16F / medium confidence; pizza → 'BBQ chicken pizza' 850 kcal / 45P / 88C / 32F / medium confidence — both plausible, all required keys present. Empty/'abc' image_base64 → 400 as expected. (3) POST /api/food/log: created 2 entries; response includes {entry, items, totals, date}; totals correctly equal item sum (705 kcal / 50P / 54C / 32F). (4) GET /api/food/today: returns matching items+totals+date='2026-05-18'. (5) DELETE /api/food/log/{id}: deletes the entry and totals drop by exactly that entry's macros; bogus id → 404. (6) Regressions all 200: GET /api/calories, GET /api/subscription/plans?country=GB (currency=GBP, 3 plans), GET /api/workouts/today, GET /api/chat/history. Backend logs confirm Claude vision LLM calls succeeded (~4-5s each). No 5xx errors observed."
   - agent: "main"
     message: "ITERATION 7 added: (1) regional pricing for 24+ countries — /api/subscription/plans accepts ?country=, returns currency/symbol/display; /api/subscription/checkout accepts country and creates Stripe session in that currency. (2) 10-language i18n with RTL support for Arabic. (3) App icon replaced. Verified visually: Spanish + Arabic switches live, SAR/JPY/INR/EUR/GBP/USD pricing all render correctly. Backend Stripe calls 200 in every currency tested."
   - agent: "testing"

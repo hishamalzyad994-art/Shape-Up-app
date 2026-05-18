@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, COLORS } from '../../src/AuthContext';
+import FoodScanModal from '../../src/FoodScanModal';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Diet() {
@@ -10,6 +11,8 @@ export default function Diet() {
   const [plans, setPlans] = useState<any>(null);
   const [recommended, setRecommended] = useState<string>('healthy');
   const [selected, setSelected] = useState<string>('healthy');
+  const [scanOpen, setScanOpen] = useState(false);
+  const [today, setToday] = useState<{ items: any[]; totals: any } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -20,9 +23,25 @@ export default function Diet() {
     setPlans(p.plans);
     setRecommended(p.recommended);
     setSelected(p.recommended);
+    try {
+      const t = await api<any>('/food/today');
+      setToday({ items: t.items || [], totals: t.totals || {} });
+    } catch (_) {}
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
+
+  const removeEntry = (id: string) => {
+    Alert.alert('Remove meal?', 'This will subtract it from today\'s total.', [
+      { text: 'Keep', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        try {
+          const t = await api<any>(`/food/log/${id}`, { method: 'DELETE' });
+          setToday({ items: t.items || [], totals: t.totals || {} });
+        } catch (e: any) { Alert.alert('Error', e.message); }
+      }},
+    ]);
+  };
 
   const setGoal = async (goal: string) => {
     setSelected(goal);
@@ -59,6 +78,54 @@ export default function Diet() {
           </View>
           <Text style={styles.macroBmr}>BMR {macros?.bmr ?? '—'} • TDEE {macros?.tdee ?? '—'}</Text>
         </View>
+
+        {/* AI FOOD SCAN */}
+        <TouchableOpacity testID="open-food-scan" style={styles.scanCta} onPress={() => setScanOpen(true)} activeOpacity={0.85}>
+          <View style={styles.scanIconBox}>
+            <Ionicons name="scan" size={26} color="#000" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.scanCtaTitle}>📸 SCAN YOUR FOOD</Text>
+            <Text style={styles.scanCtaSub}>Snap a photo • AI estimates calories & macros</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color="#000" />
+        </TouchableOpacity>
+
+        {/* TODAY'S FOOD LOG */}
+        {today && today.items.length > 0 && (
+          <View style={styles.todayBox} testID="today-food-list">
+            <View style={styles.todayHead}>
+              <Text style={styles.sectionTitle}>TODAY'S MEALS</Text>
+              <View style={styles.todayTotals}>
+                <Text style={styles.todayTotalCal}>{today.totals.calories}</Text>
+                <Text style={styles.todayTotalLbl}>KCAL EATEN</Text>
+              </View>
+            </View>
+            {macros?.target_calories ? (
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${Math.min(100, (today.totals.calories / macros.target_calories) * 100)}%` }]} />
+              </View>
+            ) : null}
+            <Text style={styles.todayHint}>
+              {macros?.target_calories
+                ? `${Math.max(0, macros.target_calories - today.totals.calories)} kcal left today • P ${today.totals.protein_g}g • C ${today.totals.carbs_g}g • F ${today.totals.fats_g}g`
+                : `Protein ${today.totals.protein_g}g • Carbs ${today.totals.carbs_g}g • Fats ${today.totals.fats_g}g`}
+            </Text>
+            {today.items.map((it: any) => (
+              <View key={it.id} style={styles.foodRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.foodName}>{it.name}</Text>
+                  <Text style={styles.foodMacros}>
+                    {it.calories} kcal • P {it.protein_g}g • C {it.carbs_g}g • F {it.fats_g}g
+                  </Text>
+                </View>
+                <TouchableOpacity testID={`food-remove-${it.id}`} onPress={() => removeEntry(it.id)} style={styles.foodDel}>
+                  <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
 
         {macros?.bmi && (
           <View style={styles.bmiCard} testID="diet-bmi-card">
@@ -139,6 +206,15 @@ export default function Diet() {
           </View>
         </View>
       </ScrollView>
+
+      <FoodScanModal
+        visible={scanOpen}
+        onClose={() => setScanOpen(false)}
+        api={api}
+        onLogged={async () => {
+          try { const t = await api<any>('/food/today'); setToday({ items: t.items || [], totals: t.totals || {} }); } catch (_) {}
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -185,4 +261,20 @@ const styles = StyleSheet.create({
   bmiCat: { fontSize: 12, letterSpacing: 2, fontWeight: '900', marginTop: 4 },
   bmiBar: { flexDirection: 'column', gap: 4, flex: 1 },
   bmiSeg: { height: 18 },
+  scanCta: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: COLORS.secondary, padding: 16, marginTop: 14 },
+  scanIconBox: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
+  scanCtaTitle: { color: '#000', fontSize: 14, fontWeight: '900', letterSpacing: 1.5 },
+  scanCtaSub: { color: '#000', fontSize: 11, marginTop: 2, opacity: 0.75 },
+  todayBox: { borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, padding: 16, marginTop: 16 },
+  todayHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  todayTotals: { alignItems: 'flex-end' },
+  todayTotalCal: { color: COLORS.primary, fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
+  todayTotalLbl: { color: COLORS.textDim, fontSize: 9, letterSpacing: 2, fontWeight: '800' },
+  progressBar: { height: 6, backgroundColor: COLORS.border, marginTop: 10 },
+  progressFill: { height: 6, backgroundColor: COLORS.secondary },
+  todayHint: { color: COLORS.textDim, fontSize: 11, marginTop: 6, fontWeight: '600' },
+  foodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 4 },
+  foodName: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  foodMacros: { color: COLORS.textDim, fontSize: 11, marginTop: 2 },
+  foodDel: { padding: 8 },
 });

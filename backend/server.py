@@ -15,7 +15,7 @@ import bcrypt
 import jwt as pyjwt
 import stripe
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -585,6 +585,164 @@ async def chat(req: ChatRequest, user=Depends(require_active_subscription)):
 async def chat_history(user=Depends(get_current_user)):
     msgs = await db.chat_history.find({"user_id": user["id"]}, {"_id": 0}).sort("ts", 1).limit(200).to_list(None)
     return {"messages": msgs}
+
+
+# ============ FOOD SCAN (Vision LLM → calories + macros estimation) ============
+import json as _json
+import re as _re
+
+class FoodScanRequest(BaseModel):
+    image_base64: str  # raw base64 (no data: prefix); JPEG/PNG/WEBP
+    note: Optional[str] = None  # optional user hint, e.g. "this is one bowl"
+
+class FoodLogRequest(BaseModel):
+    name: str
+    calories: int
+    protein_g: float = 0
+    carbs_g: float = 0
+    fats_g: float = 0
+    portion: Optional[str] = None
+    note: Optional[str] = None
+    image_base64: Optional[str] = None  # optional thumbnail to store with the log
+
+FOOD_VISION_SYS = (
+    "You are a precise nutritionist analysing a single food photo. "
+    "Return ONLY a JSON object (no markdown, no commentary) with these exact keys:\n"
+    "  name: short dish name (e.g. 'Grilled chicken salad')\n"
+    "  portion: estimated portion description (e.g. '1 medium plate, ~300g')\n"
+    "  calories: integer kcal estimate for the visible portion\n"
+    "  protein_g: integer or 1-decimal grams of protein\n"
+    "  carbs_g: integer or 1-decimal grams of carbohydrates\n"
+    "  fats_g: integer or 1-decimal grams of fat\n"
+    "  confidence: 'low' | 'medium' | 'high'\n"
+    "  note: one short sentence about assumptions or 'Add cooking oil if any'\n"
+    "If the image does NOT contain food, return {\"error\":\"no_food\"}. "
+    "Keep estimates realistic for the visible portion only. Be conservative."
+)
+
+
+def _parse_food_json(text: str) -> dict:
+    """Robustly extract the JSON object from the model reply."""
+    text = (text or "").strip()
+    # Try direct parse first
+    try:
+        return _json.loads(text)
+    except Exception:
+        pass
+    # Strip ``` fences
+    m = _re.search(r"\{.*\}", text, _re.DOTALL)
+    if m:
+        try:
+            return _json.loads(m.group(0))
+        except Exception:
+            pass
+    return {"error": "parse_failed", "raw": text[:400]}
+
+
+@api_router.post("/food/scan")
+async def food_scan(req: FoodScanRequest, user=Depends(require_active_subscription)):
+    if not req.image_base64 or len(req.image_base64) < 100:
+        raise HTTPException(status_code=400, detail="Invalid image")
+    # Strip optional data URL prefix
+    b64 = req.image_base64
+    if b64.startswith("data:"):
+        try:
+            b64 = b64.split(",", 1)[1]
+        except Exception:
+            pass
+
+    chat_client = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"food-{user['id']}-{uuid.uuid4().hex[:8]}",
+        system_message=FOOD_VISION_SYS,
+    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+
+    user_text = "Identify the food in this photo and estimate calories + macros. Return JSON only."
+    if req.note:
+        user_text += f" User note: {req.note[:200]}"
+
+    try:
+        reply = await chat_client.send_message(UserMessage(
+            text=user_text,
+            file_contents=[ImageContent(image_base64=b64)],
+        ))
+    except Exception:
+        logging.exception("Food vision LLM error")
+        raise HTTPException(status_code=500, detail="Food scanning is temporarily unavailable. Please try again.")
+
+    parsed = _parse_food_json(reply if isinstance(reply, str) else str(reply))
+    if parsed.get("error") == "no_food":
+        raise HTTPException(status_code=422, detail="We couldn't detect food in this photo. Try a clearer shot.")
+    if parsed.get("error"):
+        raise HTTPException(status_code=502, detail="AI returned an unexpected response. Please try again.")
+
+    # Normalise numeric fields
+    def _num(x, d=0.0):
+        try: return float(x)
+        except Exception: return d
+    result = {
+        "name": str(parsed.get("name") or "Unknown food")[:80],
+        "portion": str(parsed.get("portion") or "")[:120],
+        "calories": int(round(_num(parsed.get("calories"), 0))),
+        "protein_g": round(_num(parsed.get("protein_g"), 0), 1),
+        "carbs_g": round(_num(parsed.get("carbs_g"), 0), 1),
+        "fats_g": round(_num(parsed.get("fats_g"), 0), 1),
+        "confidence": str(parsed.get("confidence") or "medium")[:10],
+        "note": str(parsed.get("note") or "")[:200],
+    }
+    return result
+
+
+@api_router.post("/food/log")
+async def food_log(req: FoodLogRequest, user=Depends(require_active_subscription)):
+    entry = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "name": req.name[:80],
+        "portion": (req.portion or "")[:120],
+        "calories": int(max(0, req.calories)),
+        "protein_g": round(max(0.0, float(req.protein_g)), 1),
+        "carbs_g": round(max(0.0, float(req.carbs_g)), 1),
+        "fats_g": round(max(0.0, float(req.fats_g)), 1),
+        "note": (req.note or "")[:200],
+        "image_base64": (req.image_base64 or "")[:200_000] if req.image_base64 else None,
+        "logged_at": now_utc().isoformat(),
+        "date_key": now_utc().date().isoformat(),
+    }
+    await db.food_logs.insert_one(entry)
+    entry.pop("_id", None)
+    # Return today's totals along with the new entry
+    today = await _food_today_totals(user["id"])
+    return {"entry": {k: v for k, v in entry.items() if k != "image_base64"}, **today}
+
+
+async def _food_today_totals(user_id: str) -> dict:
+    date_key = now_utc().date().isoformat()
+    cur = db.food_logs.find({"user_id": user_id, "date_key": date_key}, {"_id": 0, "image_base64": 0}).sort("logged_at", 1)
+    items = await cur.to_list(None)
+    totals = {"calories": 0, "protein_g": 0.0, "carbs_g": 0.0, "fats_g": 0.0}
+    for it in items:
+        totals["calories"] += int(it.get("calories") or 0)
+        totals["protein_g"] += float(it.get("protein_g") or 0)
+        totals["carbs_g"] += float(it.get("carbs_g") or 0)
+        totals["fats_g"] += float(it.get("fats_g") or 0)
+    totals["protein_g"] = round(totals["protein_g"], 1)
+    totals["carbs_g"] = round(totals["carbs_g"], 1)
+    totals["fats_g"] = round(totals["fats_g"], 1)
+    return {"items": items, "totals": totals, "date": date_key}
+
+
+@api_router.get("/food/today")
+async def food_today(user=Depends(require_active_subscription)):
+    return await _food_today_totals(user["id"])
+
+
+@api_router.delete("/food/log/{entry_id}")
+async def food_log_delete(entry_id: str, user=Depends(require_active_subscription)):
+    res = await db.food_logs.delete_one({"id": entry_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return await _food_today_totals(user["id"])
 
 
 # ============ STRIPE SUBSCRIPTIONS (one-time access passes via emergentintegrations) ============

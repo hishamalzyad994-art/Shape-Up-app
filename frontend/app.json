@@ -10,11 +10,16 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.shapup.myapp"
+      "bundleIdentifier": "com.shapup.myapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan your meals to estimate calories",
+        "NSPhotoLibraryUsageDescription": "Pick food photos to estimate calories"
+      }
     },
     "android": {
       "package": "com.shapup.myapp",
       "versionCode": 3,
+      "permissions": ["android.permission.CAMERA", "android.permission.READ_MEDIA_IMAGES"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000"
@@ -37,7 +42,14 @@
           "backgroundColor": "#000"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pick food photos to estimate calories",
+          "cameraPermission": "Scan your meals to estimate calories"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
