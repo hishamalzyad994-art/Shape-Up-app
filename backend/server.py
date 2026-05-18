@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -743,6 +743,127 @@ async def food_log_delete(entry_id: str, user=Depends(require_active_subscriptio
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Entry not found")
     return await _food_today_totals(user["id"])
+
+
+# ============ REVENUECAT (Native iOS / Android in-app purchases) ============
+REVENUECAT_SECRET_KEY = os.environ.get("REVENUECAT_SECRET_KEY") or ""
+REVENUECAT_WEBHOOK_AUTH = os.environ.get("REVENUECAT_WEBHOOK_AUTH") or ""
+REVENUECAT_ENTITLEMENT = os.environ.get("REVENUECAT_ENTITLEMENT") or "shapeup_pro"
+REVENUECAT_BASE_URL = "https://api.revenuecat.com/v1"
+
+
+def _rc_pick_active_entitlement(subscriber: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return the matching active entitlement dict or None."""
+    ents = (subscriber or {}).get("entitlements") or {}
+    e = ents.get(REVENUECAT_ENTITLEMENT)
+    if not e:
+        return None
+    exp_str = e.get("expires_date")
+    if exp_str:
+        try:
+            exp_dt = datetime.fromisoformat(exp_str.replace("Z", "+00:00"))
+            if exp_dt < datetime.now(timezone.utc):
+                return None
+        except Exception:
+            pass
+    return e
+
+
+async def _rc_fetch_subscriber(app_user_id: str) -> Dict[str, Any]:
+    if not REVENUECAT_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="RevenueCat secret key not configured on server")
+    url = f"{REVENUECAT_BASE_URL}/subscribers/{app_user_id}"
+    headers = {
+        "Authorization": f"Bearer {REVENUECAT_SECRET_KEY}",
+        "Accept": "application/json",
+        "X-Platform": "ios",
+    }
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            r = await client.get(url, headers=headers)
+        if r.status_code >= 400:
+            logging.warning("RevenueCat GET /subscribers failed: %s %s", r.status_code, r.text[:300])
+            raise HTTPException(status_code=502, detail="RevenueCat lookup failed")
+        return r.json() or {}
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("RevenueCat REST error")
+        raise HTTPException(status_code=502, detail="Could not reach RevenueCat")
+
+
+async def _apply_rc_entitlement_to_user(user_id: str, subscriber: Dict[str, Any]) -> Dict[str, Any]:
+    """Mirror the RevenueCat 'shapeup_pro' entitlement into our local users.subscription doc."""
+    active = _rc_pick_active_entitlement(subscriber)
+    if active:
+        product_id = (active.get("product_identifier") or "monthly").lower()
+        plan = "yearly" if "year" in product_id else ("sixmonths" if "six" in product_id else "monthly")
+        expires = active.get("expires_date")
+        sub_doc = {
+            "status": "active",
+            "plan": plan,
+            "source": "revenuecat",
+            "auto_renew": True,
+            "cancel_at_period_end": False,
+            "access_expires_at": expires or (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+            "rc_product_identifier": active.get("product_identifier"),
+        }
+        await db.users.update_one(
+            {"id": user_id},
+            {"$set": {"subscription": sub_doc, "has_used_trial": True}},
+        )
+        return {"active": True, "plan": plan, "source": "revenuecat", "expires_at": sub_doc["access_expires_at"]}
+    # No active entitlement → mark inactive (don't wipe trial flag though)
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"subscription.status": "inactive", "subscription.source": "revenuecat"}},
+    )
+    return {"active": False, "source": "revenuecat"}
+
+
+@api_router.post("/purchases/sync")
+async def purchases_sync(user=Depends(get_current_user)):
+    """Client calls this after a successful RevenueCat purchase or restore so the
+    backend mirrors entitlement state to MongoDB (used by AI Coach, food scan, etc.)."""
+    if not REVENUECAT_SECRET_KEY:
+        # Soft-fail: client SDK already enforces gating on-device; just return current local state.
+        return {"active": _user_has_active_subscription(user), "source": "local", "note": "RevenueCat secret key not configured on server."}
+    data = await _rc_fetch_subscriber(user["id"])
+    return await _apply_rc_entitlement_to_user(user["id"], data.get("subscriber") or {})
+
+
+class RCWebhookEvent(BaseModel):
+    event: Dict[str, Any]
+    api_version: Optional[str] = None
+
+
+@api_router.post("/purchases/webhook")
+async def purchases_webhook(req: Request):
+    """RevenueCat → our backend webhook. Configure under RC dashboard →
+    Project → Integrations → Webhook. Use `REVENUECAT_WEBHOOK_AUTH` as the
+    Authorization header value the dashboard sends."""
+    auth = req.headers.get("authorization") or req.headers.get("Authorization") or ""
+    if REVENUECAT_WEBHOOK_AUTH and auth != REVENUECAT_WEBHOOK_AUTH:
+        raise HTTPException(status_code=401, detail="Invalid webhook auth")
+    try:
+        body = await req.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    event = body.get("event") or {}
+    app_user_id = event.get("app_user_id") or (event.get("aliases") or [None])[0]
+    if not app_user_id:
+        return {"ok": True, "ignored": "no app_user_id"}
+    user = await db.users.find_one({"id": app_user_id})
+    if not user:
+        return {"ok": True, "ignored": "user not found"}
+    # Re-fetch full subscriber for safety
+    try:
+        data = await _rc_fetch_subscriber(app_user_id)
+    except Exception:
+        return {"ok": True, "ignored": "rc unreachable"}
+    await _apply_rc_entitlement_to_user(app_user_id, data.get("subscriber") or {})
+    return {"ok": True, "event_type": event.get("type")}
 
 
 # ============ STRIPE SUBSCRIPTIONS (one-time access passes via emergentintegrations) ============

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { configureRC, logInRC, logOutRC, isRevenueCatAvailable } from './purchases';
 
 const API_URL = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
@@ -86,7 +87,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const t = await AsyncStorage.getItem('token');
       const u = await AsyncStorage.getItem('user');
       if (t) setToken(t);
-      if (u) setUser(JSON.parse(u));
+      if (u) {
+        const parsed = JSON.parse(u);
+        setUser(parsed);
+        // Bootstrap RevenueCat with the persisted user id on native
+        if (isRevenueCatAvailable()) configureRC(parsed?.id || null).catch(() => {});
+      } else {
+        if (isRevenueCatAvailable()) configureRC(null).catch(() => {});
+      }
       setLoading(false);
     })();
   }, []);
@@ -103,6 +111,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem('user', JSON.stringify(data.user));
     setToken(data.token);
     setUser(data.user);
+    // Link RevenueCat identity to this user
+    if (isRevenueCatAvailable()) logInRC(data.user.id).catch(() => {});
     // Fire-and-forget subscription refresh so index.tsx routing has fresh data
     setTimeout(() => { refreshSubscription().catch(() => {}); }, 0);
   };
@@ -119,6 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem('user', JSON.stringify(data.user));
     setToken(data.token);
     setUser(data.user);
+    if (isRevenueCatAvailable()) logInRC(data.user.id).catch(() => {});
   };
 
   const signOut = async () => {
@@ -126,6 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
     setSubscription(null);
+    if (isRevenueCatAvailable()) logOutRC().catch(() => {});
   };
 
   return (

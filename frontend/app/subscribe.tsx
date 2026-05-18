@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth, COLORS } from '../src/AuthContext';
 import { useLang } from '../src/i18n';
+import { isRevenueCatAvailable, presentPaywall, restorePurchases, getEntitlementActive } from '../src/purchases';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Subscribe() {
@@ -87,6 +88,54 @@ export default function Subscribe() {
 
   const subscribe = async (plan: string) => {
     setLoading(true); setSelected(plan);
+    try {
+      // Native iOS/Android → open RevenueCat hosted paywall and sync entitlement
+      if (isRevenueCatAvailable()) {
+        const result = await presentPaywall();
+        setLoading(false);
+        if (result === 'PURCHASED' || result === 'RESTORED') {
+          try { await api('/purchases/sync', { method: 'POST' }); } catch (_) {}
+          await refreshUser(); await load();
+          Alert.alert('🎉 SUCCESS', 'Your subscription is active!');
+        } else if (result === 'CANCELLED' || result === 'NOT_PRESENTED') {
+          // No action — user closed paywall
+        } else if (result === 'UNAVAILABLE') {
+          Alert.alert('Not available', 'In-app purchases need a native dev build. Falling back to web checkout.');
+          await stripeCheckout(plan);
+        } else {
+          Alert.alert('Payment error', 'Please try again.');
+        }
+        return;
+      }
+      // Web / preview → Stripe Checkout fallback
+      await stripeCheckout(plan);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Subscription failed');
+      setLoading(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!isRevenueCatAvailable()) {
+      Alert.alert('Restore', 'Restore is available on the iOS/Android app.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await restorePurchases();
+      if (r.hasEntitlement) {
+        try { await api('/purchases/sync', { method: 'POST' }); } catch (_) {}
+        await refreshUser(); await load();
+        Alert.alert('Restored ✨', 'Your subscription is active.');
+      } else {
+        Alert.alert('No purchases', 'No prior purchases found on this Apple ID.');
+      }
+    } catch (e: any) {
+      Alert.alert('Restore failed', e?.message || 'Try again');
+    } finally { setLoading(false); }
+  };
+
+  const stripeCheckout = async (plan: string) => {
     try {
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
       const res = await api<any>('/subscription/checkout', {
@@ -270,6 +319,13 @@ export default function Subscribe() {
           </Text>
         )}
 
+        {isRevenueCatAvailable() && !status?.active && (
+          <TouchableOpacity testID="restore-btn" style={styles.restoreBtn} onPress={handleRestore}>
+            <Ionicons name="refresh" size={14} color={COLORS.textDim} />
+            <Text style={styles.restoreText}>RESTORE PURCHASES</Text>
+          </TouchableOpacity>
+        )}
+
         <Text style={styles.legal}>
           {currencyCode ? `(${currencyCode}) ` : ''}{trialEligible && !status?.active
             ? `${trialDays}-day free trial then auto-renews at the selected plan price until cancelled.`
@@ -304,6 +360,8 @@ const styles = StyleSheet.create({
   trialTitle: { color: COLORS.text, fontSize: 18, fontWeight: '900', letterSpacing: -0.3, marginBottom: 8 },
   trialSubtitle: { color: COLORS.textDim, fontSize: 13, lineHeight: 19 },
   disclaimer: { color: COLORS.text, fontSize: 12, textAlign: 'center', marginTop: 10, fontWeight: '700' },
+  restoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14, paddingVertical: 8 },
+  restoreText: { color: COLORS.textDim, fontSize: 11, letterSpacing: 2, fontWeight: '800' },
   activeCard: { borderWidth: 1, borderColor: COLORS.secondary, backgroundColor: COLORS.surface, padding: 22, alignItems: 'center', marginBottom: 24 },
   activeTitle: { color: COLORS.text, fontSize: 22, fontWeight: '900', letterSpacing: 1, marginTop: 10 },
   activeText: { color: COLORS.textDim, fontSize: 14, textAlign: 'center', marginTop: 10, lineHeight: 22 },

@@ -8,6 +8,7 @@ import { useAuth, COLORS } from '../../src/AuthContext';
 import { LANGUAGES, useLang } from '../../src/i18n';
 import { COUNTRY_OPTIONS, currencyForCountry } from '../../src/regions';
 import { isReminderEnabled, setReminderEnabled } from '../../src/notifications';
+import { isRevenueCatAvailable, presentCustomerCenter } from '../../src/purchases';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Profile() {
@@ -265,6 +266,15 @@ export default function Profile() {
         <TouchableOpacity testID="profile-edit-btn" style={styles.editBtn} onPress={() => router.push('/onboarding')}>
           <Text style={styles.editText}>EDIT PROFILE</Text>
         </TouchableOpacity>
+
+        {isRevenueCatAvailable() && (
+          <TouchableOpacity testID="customer-center-btn" style={[styles.editBtn, { backgroundColor: COLORS.surface, marginTop: 10 }]} onPress={async () => {
+            const ok = await presentCustomerCenter();
+            if (!ok) Alert.alert('Subscription', 'Customer Center is only available in the native app.');
+          }}>
+            <Text style={styles.editText}>MANAGE SUBSCRIPTION</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
       {/* Language picker */}

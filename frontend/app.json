@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.shapup.myapp",
+      "bundleIdentifier": "app.emergent.slimchallenge5de71fad6",
       "infoPlist": {
         "NSCameraUsageDescription": "Scan your meals to estimate calories",
         "NSPhotoLibraryUsageDescription": "Pick food photos to estimate calories"
