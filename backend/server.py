@@ -76,7 +76,25 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return user
 
 
+# App Store / Play Store review accounts — these bypass the paywall so review
+# teams can test the full app without needing a real subscription. Keep the
+# list small and lower-cased; never expose this list in any API response.
+REVIEWER_EMAILS = {
+    "shapeupapp2026@gmail.com",
+}
+
+
+def _is_reviewer(user: dict) -> bool:
+    try:
+        return bool(user) and (user.get("email") or "").strip().lower() in REVIEWER_EMAILS
+    except Exception:
+        return False
+
+
 def _user_has_active_subscription(user: dict) -> bool:
+    # Always grant access to known store-review accounts.
+    if _is_reviewer(user):
+        return True
     sub = user.get("subscription") if user else None
     if not sub:
         return False
@@ -311,6 +329,44 @@ async def root():
     return {"message": "Change Yourself API"}
 
 
+async def _ensure_reviewer_subscription(user: dict) -> dict:
+    """For known App/Play store review accounts, make sure their `subscription`
+    doc is populated with a far-future expiration so the frontend status
+    endpoint returns active=true and the paywall is never rendered."""
+    if not _is_reviewer(user):
+        return user
+    sub = user.get("subscription") or {}
+    expires = sub.get("access_expires_at")
+    needs_update = (
+        sub.get("status") != "active"
+        or not expires
+        or sub.get("source") != "reviewer"
+    )
+    if not needs_update:
+        try:
+            if datetime.fromisoformat(expires) < now_utc() + timedelta(days=365):
+                needs_update = True
+        except Exception:
+            needs_update = True
+    if needs_update:
+        sub_doc = {
+            "status": "active",
+            "plan": "yearly",
+            "source": "reviewer",
+            "auto_renew": False,
+            "cancel_at_period_end": False,
+            "access_expires_at": (now_utc() + timedelta(days=3650)).isoformat(),
+            "purchased_at": now_utc().isoformat(),
+        }
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"subscription": sub_doc, "has_used_trial": True}},
+        )
+        user["subscription"] = sub_doc
+        user["has_used_trial"] = True
+    return user
+
+
 @api_router.post("/auth/register")
 async def register(req: RegisterRequest):
     existing = await db.users.find_one({"email": req.email.lower()})
@@ -329,6 +385,8 @@ async def register(req: RegisterRequest):
         "completed_days": [],
     }
     await db.users.insert_one(user_doc)
+    # Reviewer accounts: pre-grant Pro access immediately on registration.
+    await _ensure_reviewer_subscription(user_doc)
     token = create_token(user_id)
     user_safe = {k: v for k, v in user_doc.items() if k not in ("password", "_id")}
     return {"token": token, "user": user_safe}
@@ -339,6 +397,9 @@ async def login(req: LoginRequest):
     user = await db.users.find_one({"email": req.email.lower()})
     if not user or not verify_password(req.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    # Reviewer accounts: ensure Pro access is always live (in case the doc was
+    # ever wiped or an admin manipulated it).
+    user = await _ensure_reviewer_subscription(user)
     token = create_token(user["id"])
     user.pop("password", None)
     user.pop("_id", None)
