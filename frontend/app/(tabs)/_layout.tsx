@@ -1,11 +1,13 @@
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, useAuth } from '../../src/AuthContext';
+import { useLang } from '../../src/i18n';
 import { Platform } from 'react-native';
 import { useEffect } from 'react';
 
 export default function TabsLayout() {
   const { subscription, refreshSubscription } = useAuth();
+  const { t } = useLang();
   const router = useRouter();
   useEffect(() => {
     (async () => {
@@ -14,7 +16,6 @@ export default function TabsLayout() {
     })();
   }, []);
   if (subscription && !subscription.active) {
-    // While redirecting
     return null;
   }
   return (
@@ -44,11 +45,11 @@ export default function TabsLayout() {
         },
       })}
     >
-      <Tabs.Screen name="index" options={{ title: 'HOME' }} />
-      <Tabs.Screen name="workout" options={{ title: 'WORKOUT' }} />
-      <Tabs.Screen name="diet" options={{ title: 'DIET' }} />
-      <Tabs.Screen name="chat" options={{ title: 'COACH' }} />
-      <Tabs.Screen name="profile" options={{ title: 'PROFILE' }} />
+      <Tabs.Screen name="index" options={{ title: t('tab_home') }} />
+      <Tabs.Screen name="workout" options={{ title: t('tab_workout') }} />
+      <Tabs.Screen name="diet" options={{ title: t('tab_diet') }} />
+      <Tabs.Screen name="chat" options={{ title: t('tab_coach') }} />
+      <Tabs.Screen name="profile" options={{ title: t('tab_profile') }} />
     </Tabs>
   );
 }

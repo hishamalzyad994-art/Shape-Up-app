@@ -98,6 +98,14 @@ const en: Dict = {
   done: 'DONE',
   cancel: 'CANCEL',
   save: 'SAVE',
+  tab_home: 'HOME',
+  tab_workout: 'WORKOUT',
+  tab_diet: 'DIET',
+  tab_coach: 'COACH',
+  tab_profile: 'PROFILE',
+  restore_subscription: 'RESTORE SUBSCRIPTION',
+  restoring: 'RESTORING…',
+  watch_demo: 'WATCH DEMO',
 };
 
 // ----- Translations (curated; non-EN keys fall back to EN if missing) -----
@@ -187,6 +195,8 @@ const ar: Dict = {
   done: 'تم',
   cancel: 'إلغاء',
   save: 'حفظ',
+  tab_home: 'الرئيسية', tab_workout: 'تمرين', tab_diet: 'تغذية', tab_coach: 'مدرب', tab_profile: 'الملف',
+  restore_subscription: 'استعادة الاشتراك', restoring: 'جاري الاستعادة…', watch_demo: 'شاهد العرض',
 };
 
 const es: Dict = {
@@ -214,6 +224,8 @@ const es: Dict = {
   settings: 'AJUSTES', preferences: 'PREFERENCIAS', manage_subscription: 'GESTIONAR SUSCRIPCIÓN',
   privacy_policy: 'POLÍTICA DE PRIVACIDAD', terms_of_service: 'TÉRMINOS', logout: 'CERRAR SESIÓN',
   select_language: 'Selecciona idioma', select_region: 'Selecciona región / moneda', done: 'HECHO', cancel: 'CANCELAR', save: 'GUARDAR',
+  tab_home: 'INICIO', tab_workout: 'ENTRENO', tab_diet: 'DIETA', tab_coach: 'COACH', tab_profile: 'PERFIL',
+  restore_subscription: 'RESTAURAR SUSCRIPCIÓN', restoring: 'RESTAURANDO…', watch_demo: 'VER DEMO',
 };
 
 const fr: Dict = {
@@ -241,6 +253,8 @@ const fr: Dict = {
   settings: 'PARAMÈTRES', preferences: 'PRÉFÉRENCES', manage_subscription: 'GÉRER L\'ABONNEMENT',
   privacy_policy: 'CONFIDENTIALITÉ', terms_of_service: 'CONDITIONS', logout: 'DÉCONNEXION',
   select_language: 'Choisir la langue', select_region: 'Choisir la région / devise', done: 'OK', cancel: 'ANNULER', save: 'ENREGISTRER',
+  tab_home: 'ACCUEIL', tab_workout: 'SÉANCE', tab_diet: 'DIÈTE', tab_coach: 'COACH', tab_profile: 'PROFIL',
+  restore_subscription: "RESTAURER L'ABONNEMENT", restoring: 'RESTAURATION…', watch_demo: 'VOIR DÉMO',
 };
 
 const de: Dict = {
@@ -268,6 +282,8 @@ const de: Dict = {
   settings: 'EINSTELLUNGEN', preferences: 'PRÄFERENZEN', manage_subscription: 'ABO VERWALTEN',
   privacy_policy: 'DATENSCHUTZ', terms_of_service: 'AGB', logout: 'ABMELDEN',
   select_language: 'Sprache wählen', select_region: 'Region / Währung wählen', done: 'FERTIG', cancel: 'ABBRECHEN', save: 'SPEICHERN',
+  tab_home: 'START', tab_workout: 'TRAINING', tab_diet: 'DIÄT', tab_coach: 'COACH', tab_profile: 'PROFIL',
+  restore_subscription: 'ABO WIEDERHERSTELLEN', restoring: 'WIRD WIEDERHERGESTELLT…', watch_demo: 'DEMO ANSEHEN',
 };
 
 const pt: Dict = {
@@ -295,6 +311,8 @@ const pt: Dict = {
   settings: 'CONFIGURAÇÕES', preferences: 'PREFERÊNCIAS', manage_subscription: 'GERENCIAR ASSINATURA',
   privacy_policy: 'PRIVACIDADE', terms_of_service: 'TERMOS', logout: 'SAIR',
   select_language: 'Selecionar idioma', select_region: 'Selecionar região / moeda', done: 'PRONTO', cancel: 'CANCELAR', save: 'SALVAR',
+  tab_home: 'INÍCIO', tab_workout: 'TREINO', tab_diet: 'DIETA', tab_coach: 'COACH', tab_profile: 'PERFIL',
+  restore_subscription: 'RESTAURAR ASSINATURA', restoring: 'RESTAURANDO…', watch_demo: 'VER DEMO',
 };
 
 const it: Dict = {
@@ -322,6 +340,8 @@ const it: Dict = {
   settings: 'IMPOSTAZIONI', preferences: 'PREFERENZE', manage_subscription: 'GESTISCI ABBONAMENTO',
   privacy_policy: 'PRIVACY', terms_of_service: 'TERMINI', logout: 'ESCI',
   select_language: 'Seleziona lingua', select_region: 'Seleziona regione / valuta', done: 'FATTO', cancel: 'ANNULLA', save: 'SALVA',
+  tab_home: 'HOME', tab_workout: 'ALLENA', tab_diet: 'DIETA', tab_coach: 'COACH', tab_profile: 'PROFILO',
+  restore_subscription: 'RIPRISTINA ABBONAMENTO', restoring: 'RIPRISTINO…', watch_demo: 'GUARDA DEMO',
 };
 
 const hi: Dict = {
@@ -349,6 +369,8 @@ const hi: Dict = {
   settings: 'सेटिंग्स', preferences: 'पसंद', manage_subscription: 'सदस्यता प्रबंधित करें',
   privacy_policy: 'गोपनीयता नीति', terms_of_service: 'सेवा शर्तें', logout: 'लॉग आउट',
   select_language: 'भाषा चुनें', select_region: 'क्षेत्र / मुद्रा चुनें', done: 'हो गया', cancel: 'रद्द करें', save: 'सहेजें',
+  tab_home: 'होम', tab_workout: 'वर्कआउट', tab_diet: 'डायट', tab_coach: 'कोच', tab_profile: 'प्रोफ़ाइल',
+  restore_subscription: 'सदस्यता पुनर्स्थापित करें', restoring: 'पुनर्स्थापित हो रहा है…', watch_demo: 'डेमो देखें',
 };
 
 const ja: Dict = {
@@ -376,6 +398,8 @@ const ja: Dict = {
   settings: '設定', preferences: '環境設定', manage_subscription: 'サブスク管理',
   privacy_policy: 'プライバシー', terms_of_service: '利用規約', logout: 'ログアウト',
   select_language: '言語を選択', select_region: '地域 / 通貨を選択', done: '完了', cancel: 'キャンセル', save: '保存',
+  tab_home: 'ホーム', tab_workout: 'トレ', tab_diet: '食事', tab_coach: 'コーチ', tab_profile: 'プロフ',
+  restore_subscription: '購入を復元', restoring: '復元中…', watch_demo: 'デモを見る',
 };
 
 const tr: Dict = {
@@ -403,6 +427,8 @@ const tr: Dict = {
   settings: 'AYARLAR', preferences: 'TERCİHLER', manage_subscription: 'ABONELİĞİ YÖNET',
   privacy_policy: 'GİZLİLİK', terms_of_service: 'KOŞULLAR', logout: 'ÇIKIŞ',
   select_language: 'Dil seç', select_region: 'Bölge / para birimi seç', done: 'TAMAM', cancel: 'İPTAL', save: 'KAYDET',
+  tab_home: 'ANA', tab_workout: 'ANTRENMAN', tab_diet: 'DİYET', tab_coach: 'KOÇ', tab_profile: 'PROFİL',
+  restore_subscription: 'ABONELİĞİ GERİ YÜKLE', restoring: 'GERİ YÜKLENİYOR…', watch_demo: 'DEMO İZLE',
 };
 
 const DICTS: Record<string, Dict> = { en, ar, es, fr, de, pt, it, hi, ja, tr };

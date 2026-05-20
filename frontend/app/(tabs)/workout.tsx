@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, TextInput, Alert, Platform,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, COLORS } from '../../src/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -63,6 +64,7 @@ export default function Workout() {
   const [library, setLibrary] = useState<any>({});
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerCat, setPickerCat] = useState<string>('');
+  const [videoEx, setVideoEx] = useState<any>(null);
 
   const whistleEnabled = user?.profile?.whistle_enabled !== false;
 
@@ -289,8 +291,8 @@ export default function Workout() {
                 onPress={() => toggleExercise(i)}
                 activeOpacity={0.85}
               >
-                {ex.gif ? (
-                  <Image source={{ uri: ex.gif }} style={styles.exGif} />
+                {(ex.images && ex.images[0]) || ex.gif ? (
+                  <Image source={{ uri: (ex.images && ex.images[0]) || ex.gif }} style={styles.exGif} />
                 ) : (
                   <View style={[styles.exGif, { alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surfaceElevated }]}>
                     <Ionicons name={ex.icon || 'flash-outline'} size={32} color={COLORS.primary} />
@@ -299,6 +301,16 @@ export default function Workout() {
                 <View style={styles.exInfo}>
                   <Text style={[styles.exName, done && { textDecorationLine: 'line-through', color: COLORS.textDim }]}>{ex.name}</Text>
                   <Text style={styles.exMeta}>{ex.sets} SETS × {ex.reps} {ex.unit?.toUpperCase()} {ex.equipment === 'gym' ? '• GYM' : ''}</Text>
+                  {ex.video_url ? (
+                    <TouchableOpacity
+                      testID={`exercise-watch-${i}`}
+                      onPress={(e) => { e.stopPropagation?.(); setVideoEx(ex); }}
+                      style={styles.watchBtn}
+                    >
+                      <Ionicons name="play-circle" size={14} color={COLORS.secondary} />
+                      <Text style={styles.watchTxt}>WATCH DEMO</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
                 <View style={[styles.exCheck, done && { backgroundColor: COLORS.secondary, borderColor: COLORS.secondary }]}>
                   {done && <Ionicons name="checkmark" size={20} color="#000" />}
@@ -339,9 +351,49 @@ export default function Workout() {
         )}
       </ScrollView>
 
+      {/* Video demo modal */}
+      <Modal visible={!!videoEx} animationType="fade" transparent onRequestClose={() => setVideoEx(null)}>
+        <View style={styles.videoBg}>
+          <View style={styles.videoCard}>
+            <View style={styles.videoHeader}>
+              <Text style={styles.videoTitle}>{videoEx?.name?.toUpperCase()}</Text>
+              <TouchableOpacity testID="video-close" onPress={() => setVideoEx(null)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            {videoEx?.video_url ? (
+              Platform.OS === 'web' ? (
+                <iframe
+                  src={videoEx.video_url + '?autoplay=1&rel=0'}
+                  style={{ width: '100%', height: 240, border: 0 }}
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <View style={{ width: '100%', height: 240, backgroundColor: '#000' }}>
+                  <WebView
+                    source={{ uri: videoEx.video_url + '?autoplay=1&rel=0' }}
+                    allowsInlineMediaPlayback
+                    mediaPlaybackRequiresUserAction={false}
+                    style={{ flex: 1, backgroundColor: '#000' }}
+                  />
+                </View>
+              )
+            ) : null}
+            {videoEx?.images?.length > 0 && (
+              <ScrollView horizontal style={{ marginTop: 12 }} showsHorizontalScrollIndicator={false}>
+                {videoEx.images.map((u: string, idx: number) => (
+                  <Image key={idx} source={{ uri: u }} style={styles.videoThumb} />
+                ))}
+              </ScrollView>
+            )}
+            <Text style={styles.videoMeta}>{videoEx?.sets} SETS × {videoEx?.reps} {videoEx?.unit?.toUpperCase()}</Text>
+          </View>
+        </View>
+      </Modal>
+
       {/* Library picker modal */}
-      <Modal visible={pickerOpen} animationType="slide" transparent>
-        <View style={styles.modalBg}>
+      <Modal visible={pickerOpen} animationType="slide" transparent>        <View style={styles.modalBg}>
           <View style={[styles.modalCard,{maxHeight:'80%'}]}>
             <Text style={styles.modalKicker}>ADD EXERCISE</Text>
             <Text style={styles.modalTitle}>From library</Text>
@@ -432,6 +484,14 @@ const styles = StyleSheet.create({
   exCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface, padding: 10, marginBottom: 10 },
   exCardDone: { backgroundColor: COLORS.surfaceElevated, borderColor: COLORS.secondary },
   exGif: { width: 70, height: 70, backgroundColor: '#000' },
+  watchBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, alignSelf: 'flex-start' },
+  watchTxt: { color: COLORS.secondary, fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
+  videoBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', padding: 16 },
+  videoCard: { backgroundColor: COLORS.bg, borderTopWidth: 3, borderTopColor: COLORS.primary, padding: 16 },
+  videoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  videoTitle: { color: COLORS.text, fontSize: 16, fontWeight: '900', letterSpacing: 1.5, flex: 1 },
+  videoThumb: { width: 80, height: 80, marginRight: 8, borderWidth: 1, borderColor: COLORS.border },
+  videoMeta: { color: COLORS.textDim, marginTop: 14, fontSize: 12, letterSpacing: 1.5, fontWeight: '800' },
   exInfo: { flex: 1 },
   exName: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   exMeta: { color: COLORS.textDim, fontSize: 11, letterSpacing: 2, marginTop: 4, fontWeight: '700' },

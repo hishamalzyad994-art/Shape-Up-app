@@ -81,6 +81,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 # list small and lower-cased; never expose this list in any API response.
 REVIEWER_EMAILS = {
     "shapeupapp2026@gmail.com",
+    "hishamalzyad999@gmail.com",
+    "hishamalzyad994@gmail.com",
+    "reviewshapeup@gmail.com",
 }
 
 
@@ -211,63 +214,80 @@ def compute_bmr_tdee(profile: dict):
 
 
 # ------------ Static content: exercises & meals ------------
+# Each exercise now has multiple demonstration images (start + end position)
+# from the open-source free-exercise-db project, plus an optional YouTube
+# demo video. URLs are public, CDN-cached, and CC-licensed.
+_EXDB = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises"
+_YT = "https://www.youtube.com/embed"
+
+def _ex(name, sets, reps, unit, icon, equipment, slug, yt=None):
+    return {
+        "name": name, "sets": sets, "reps": reps, "unit": unit,
+        "icon": icon, "equipment": equipment,
+        "images": [f"{_EXDB}/{slug}/0.jpg", f"{_EXDB}/{slug}/1.jpg"],
+        # Keep `gif` for backwards-compat with older clients that read it.
+        "gif": f"{_EXDB}/{slug}/0.jpg",
+        "video_url": f"{_YT}/{yt}" if yt else None,
+    }
+
+
 EXERCISES_BY_FOCUS = {
     "belly": [
-        {"name": "Plank", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?w=400"},
-        {"name": "Crunches", "sets": 3, "reps": 20, "unit": "reps", "icon": "fitness-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400"},
-        {"name": "Hanging Leg Raises", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?w=400"},
-        {"name": "Cable Crunch", "sets": 3, "reps": 15, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
-        {"name": "Mountain Climbers", "sets": 3, "reps": 20, "unit": "reps", "icon": "flash-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=400"},
+        _ex("Plank",              3, 45, "sec",  "timer-outline",    "bodyweight", "Plank",                                  yt="pSHjTRCQxIw"),
+        _ex("Crunches",           3, 20, "reps", "fitness-outline",  "bodyweight", "Crunches",                               yt="Xyd_fa5zoEU"),
+        _ex("Hanging Leg Raises", 3, 12, "reps", "arrow-up-outline", "gym",        "Hanging_Leg_Raise",                      yt="hdc6Sxnvxh4"),
+        _ex("Cable Crunch",       3, 15, "reps", "barbell-outline",  "gym",        "Cable_Crunch",                           yt="ToVZ-yIvKzg"),
+        _ex("Mountain Climbers",  3, 20, "reps", "flash-outline",    "bodyweight", "Mountain_Climbers",                      yt="nmwgirgXLYM"),
     ],
     "chest": [
-        {"name": "Bench Press", "sets": 4, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
-        {"name": "Incline Dumbbell Press", "sets": 3, "reps": 10, "unit": "reps", "icon": "trending-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
-        {"name": "Push Ups", "sets": 4, "reps": 15, "unit": "reps", "icon": "fitness-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?w=400"},
-        {"name": "Cable Fly", "sets": 3, "reps": 12, "unit": "reps", "icon": "git-network-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583500178690-f7fd39f44e8d?w=400"},
-        {"name": "Dumbbell Pullover", "sets": 3, "reps": 12, "unit": "reps", "icon": "ellipse-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
+        _ex("Bench Press",            4, 10, "reps", "barbell-outline",       "gym",        "Barbell_Bench_Press_-_Medium_Grip", yt="rT7DgCr-3pg"),
+        _ex("Incline Dumbbell Press", 3, 10, "reps", "trending-up-outline",   "gym",        "Incline_Dumbbell_Press",            yt="8iPEnn-ltC8"),
+        _ex("Push Ups",               4, 15, "reps", "fitness-outline",       "bodyweight", "Pushups",                           yt="IODxDxX7oi4"),
+        _ex("Cable Fly",              3, 12, "reps", "git-network-outline",   "gym",        "Cable_Crossover",                   yt="taI4XduLpTk"),
+        _ex("Dumbbell Pullover",      3, 12, "reps", "ellipse-outline",       "gym",        "Dumbbell_Pullover",                 yt="V_yBb_jruzs"),
     ],
     "arms": [
-        {"name": "Barbell Bicep Curl", "sets": 4, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
-        {"name": "Dumbbell Hammer Curl", "sets": 3, "reps": 12, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
-        {"name": "Tricep Rope Pushdown", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-down-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
-        {"name": "Skull Crushers", "sets": 3, "reps": 10, "unit": "reps", "icon": "skull-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583500178690-f7fd39f44e8d?w=400"},
-        {"name": "Tricep Dips", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-down-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
+        _ex("Barbell Bicep Curl",     4, 10, "reps", "barbell-outline",       "gym",        "Barbell_Curl",                      yt="kwG2ipFRgfo"),
+        _ex("Dumbbell Hammer Curl",   3, 12, "reps", "barbell-outline",       "gym",        "Hammer_Curls",                      yt="zC3nLlEvin4"),
+        _ex("Tricep Rope Pushdown",   3, 12, "reps", "arrow-down-outline",    "gym",        "Triceps_Pushdown",                  yt="vB5OHsJ3EME"),
+        _ex("Skull Crushers",         3, 10, "reps", "skull-outline",         "gym",        "EZ-Bar_Skullcrusher",               yt="d_KZxkY_0cM"),
+        _ex("Tricep Dips",            3, 12, "reps", "arrow-down-outline",    "bodyweight", "Bench_Dips",                        yt="0326dy_-CzM"),
     ],
     "legs": [
-        {"name": "Barbell Back Squat", "sets": 4, "reps": 8, "unit": "reps", "icon": "body-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=400"},
-        {"name": "Romanian Deadlift", "sets": 3, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
-        {"name": "Leg Press", "sets": 4, "reps": 12, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=400"},
-        {"name": "Lunges", "sets": 3, "reps": 12, "unit": "each", "icon": "walk-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1434596922112-19c563067271?w=400"},
-        {"name": "Leg Curl", "sets": 3, "reps": 12, "unit": "reps", "icon": "sync-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1599058945522-28d584b6f0ff?w=400"},
-        {"name": "Standing Calf Raise", "sets": 3, "reps": 15, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1535743686920-55e4145369b9?w=400"},
+        _ex("Barbell Back Squat",     4, 8,  "reps", "body-outline",          "gym",        "Barbell_Squat",                     yt="ultWZbUMPL8"),
+        _ex("Romanian Deadlift",      3, 10, "reps", "barbell-outline",       "gym",        "Romanian_Deadlift",                 yt="JCXUYuzwNrM"),
+        _ex("Leg Press",              4, 12, "reps", "arrow-up-outline",      "gym",        "Leg_Press",                         yt="IZxyjW7MPJQ"),
+        _ex("Lunges",                 3, 12, "each", "walk-outline",          "bodyweight", "Bodyweight_Walking_Lunge",          yt="QOVaHwm-Q6U"),
+        _ex("Leg Curl",               3, 12, "reps", "sync-outline",          "gym",        "Lying_Leg_Curls",                   yt="1Tq3QdYUuHs"),
+        _ex("Standing Calf Raise",    3, 15, "reps", "arrow-up-outline",      "gym",        "Standing_Barbell_Calf_Raise",       yt="-M4-G8p8fmc"),
     ],
     "waist": [
-        {"name": "Side Plank", "sets": 3, "reps": 30, "unit": "sec each", "icon": "timer-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?w=400"},
-        {"name": "Cable Wood Chop", "sets": 3, "reps": 12, "unit": "each", "icon": "leaf-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
-        {"name": "Russian Twists (weighted)", "sets": 3, "reps": 20, "unit": "reps", "icon": "sync-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
-        {"name": "Standing Side Bend", "sets": 3, "reps": 15, "unit": "each", "icon": "swap-horizontal-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=400"},
+        _ex("Side Plank",             3, 30, "sec each", "timer-outline",     "bodyweight", "Side_Bridge",                       yt="K2VljzCC16g"),
+        _ex("Cable Wood Chop",        3, 12, "each", "leaf-outline",          "gym",        "Cable_Standing_Trunk_Twist",        yt="ZQ6vUS9-yhc"),
+        _ex("Russian Twists",         3, 20, "reps", "sync-outline",          "gym",        "Seated_Russian_Twist",              yt="wkD8rjkodUI"),
+        _ex("Standing Side Bend",     3, 15, "each", "swap-horizontal-outline","gym",       "Side_Bends",                        yt="iZftdmuw3p4"),
     ],
     "back": [
-        {"name": "Deadlift", "sets": 4, "reps": 6, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
-        {"name": "Pull Ups", "sets": 4, "reps": 8, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?w=400"},
-        {"name": "Bent Over Row", "sets": 4, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
-        {"name": "Lat Pulldown", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-down-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
-        {"name": "Seated Cable Row", "sets": 3, "reps": 12, "unit": "reps", "icon": "git-network-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583500178690-f7fd39f44e8d?w=400"},
+        _ex("Deadlift",               4, 6,  "reps", "barbell-outline",       "gym",        "Barbell_Deadlift",                  yt="op9kVnSso6Q"),
+        _ex("Pull Ups",               4, 8,  "reps", "arrow-up-outline",      "gym",        "Pullups",                           yt="eGo4IYlbE5g"),
+        _ex("Bent Over Row",          4, 10, "reps", "barbell-outline",       "gym",        "Bent_Over_Barbell_Row",             yt="kBWAon7ItDw"),
+        _ex("Lat Pulldown",           3, 12, "reps", "arrow-down-outline",    "gym",        "Wide-Grip_Lat_Pulldown",            yt="CAwf7n6Luuc"),
+        _ex("Seated Cable Row",       3, 12, "reps", "git-network-outline",   "gym",        "Seated_Cable_Rows",                 yt="GZbfZ033f74"),
     ],
     "shoulders": [
-        {"name": "Overhead Press", "sets": 4, "reps": 8, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
-        {"name": "Dumbbell Lateral Raise", "sets": 3, "reps": 12, "unit": "reps", "icon": "swap-horizontal-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400"},
-        {"name": "Front Raise", "sets": 3, "reps": 12, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400"},
-        {"name": "Face Pulls", "sets": 3, "reps": 15, "unit": "reps", "icon": "git-pull-request-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1583500178690-f7fd39f44e8d?w=400"},
-        {"name": "Pike Push Ups", "sets": 3, "reps": 10, "unit": "reps", "icon": "fitness-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?w=400"},
+        _ex("Overhead Press",         4, 8,  "reps", "arrow-up-outline",      "gym",        "Standing_Military_Press",           yt="2yjwXTZQDDI"),
+        _ex("Lateral Raise",          3, 12, "reps", "swap-horizontal-outline","gym",       "Side_Lateral_Raise",                yt="3VcKaXpzqRo"),
+        _ex("Front Raise",            3, 12, "reps", "arrow-up-outline",      "gym",        "Front_Dumbbell_Raise",              yt="-t7fuZ0KhDA"),
+        _ex("Face Pulls",             3, 15, "reps", "git-pull-request-outline","gym",     "Face_Pull",                         yt="rep-qVOkqgk"),
+        _ex("Pike Push Ups",          3, 10, "reps", "fitness-outline",       "bodyweight", "Pike_Pushups",                      yt="qBYC7QcjHWE"),
     ],
     "full_body": [
-        {"name": "Barbell Squat", "sets": 4, "reps": 8, "unit": "reps", "icon": "body-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=400"},
-        {"name": "Deadlift", "sets": 3, "reps": 8, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400"},
-        {"name": "Bench Press", "sets": 3, "reps": 10, "unit": "reps", "icon": "barbell-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400"},
-        {"name": "Pull Ups", "sets": 3, "reps": 8, "unit": "reps", "icon": "arrow-up-outline", "equipment": "gym", "gif": "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?w=400"},
-        {"name": "Burpees", "sets": 3, "reps": 12, "unit": "reps", "icon": "flame-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=400"},
-        {"name": "Plank", "sets": 3, "reps": 45, "unit": "sec", "icon": "timer-outline", "equipment": "bodyweight", "gif": "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?w=400"},
+        _ex("Barbell Squat",          4, 8,  "reps", "body-outline",          "gym",        "Barbell_Squat",                     yt="ultWZbUMPL8"),
+        _ex("Deadlift",               3, 8,  "reps", "barbell-outline",       "gym",        "Barbell_Deadlift",                  yt="op9kVnSso6Q"),
+        _ex("Bench Press",            3, 10, "reps", "barbell-outline",       "gym",        "Barbell_Bench_Press_-_Medium_Grip", yt="rT7DgCr-3pg"),
+        _ex("Pull Ups",               3, 8,  "reps", "arrow-up-outline",      "gym",        "Pullups",                           yt="eGo4IYlbE5g"),
+        _ex("Burpees",                3, 12, "reps", "flame-outline",         "bodyweight", "Burpee",                            yt="dZgVxmf6jkA"),
+        _ex("Plank",                  3, 45, "sec",  "timer-outline",         "bodyweight", "Plank",                             yt="pSHjTRCQxIw"),
     ],
 }
 

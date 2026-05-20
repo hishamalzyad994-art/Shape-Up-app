@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ImageBackground,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert,
 } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { useAuth, COLORS } from '../../src/AuthContext';
+import { isRevenueCatAvailable, restorePurchases } from '../../src/purchases';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Login() {
@@ -14,6 +15,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const onSubmit = async () => {
     if (!email || !password) { setErr('Email and password required'); return; }
@@ -24,6 +26,33 @@ export default function Login() {
     } catch (e: any) {
       setErr(e.message || 'Login failed');
     } finally { setLoading(false); }
+  };
+
+  const onRestore = async () => {
+    setRestoring(true);
+    try {
+      if (isRevenueCatAvailable()) {
+        const r = await restorePurchases();
+        if (r.hasEntitlement) {
+          Alert.alert(
+            'Subscription Restored ✨',
+            'Your purchase has been linked to this device. Please sign in to access your account.',
+          );
+        } else {
+          Alert.alert(
+            'No purchase found',
+            "We didn't find any active subscription on this Apple ID. If you previously paid with a different account, switch to it in Settings → Apple ID, then try again.",
+          );
+        }
+      } else {
+        Alert.alert(
+          'Restore on the app',
+          'Restore Purchases works inside the native iPhone / Android app. On the web preview, please sign in to manage your Stripe subscription.',
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Restore failed', e?.message || 'Please try again');
+    } finally { setRestoring(false); }
   };
 
   return (
@@ -85,6 +114,19 @@ export default function Login() {
                 : <Text style={styles.ctaText}>LOG IN</Text>}
             </TouchableOpacity>
 
+            <TouchableOpacity
+              testID="login-restore-btn"
+              style={styles.restoreLoginBtn}
+              onPress={onRestore}
+              disabled={restoring}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="refresh-outline" size={14} color={COLORS.textDim} />
+              <Text style={styles.restoreLoginText}>
+                {restoring ? 'RESTORING…' : 'RESTORE SUBSCRIPTION'}
+              </Text>
+            </TouchableOpacity>
+
             <Link href="/auth/signup" asChild>
               <TouchableOpacity testID="go-signup-link" style={styles.linkRow}>
                 <Text style={styles.linkText}>New here? </Text>
@@ -120,4 +162,10 @@ const styles = StyleSheet.create({
   linkRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   linkText: { color: COLORS.textDim, letterSpacing: 1, fontSize: 13 },
   error: { color: COLORS.error, marginBottom: 8, letterSpacing: 1, fontSize: 13 },
+  restoreLoginBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: 14, paddingVertical: 10, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: 'rgba(17,17,17,0.5)',
+  },
+  restoreLoginText: { color: COLORS.textDim, fontSize: 11, letterSpacing: 2, fontWeight: '800' },
 });
