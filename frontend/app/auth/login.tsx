@@ -31,28 +31,43 @@ export default function Login() {
   const onRestore = async () => {
     setRestoring(true);
     try {
-      if (isRevenueCatAvailable()) {
-        const r = await restorePurchases();
-        if (r.hasEntitlement) {
-          Alert.alert(
-            'Subscription Restored ✨',
-            'Your purchase has been linked to this device. Please sign in to access your account.',
-          );
-        } else {
-          Alert.alert(
-            'No purchase found',
-            "We didn't find any active subscription on this Apple ID. If you previously paid with a different account, switch to it in Settings → Apple ID, then try again.",
-          );
-        }
+      if (!isRevenueCatAvailable()) {
+        Alert.alert(
+          'Restore on iOS / Android',
+          'Restore Purchases works inside the native ShapeUp app from the App Store. On the web preview, please sign in to manage your Stripe subscription.',
+        );
+        return;
+      }
+      const r = await restorePurchases();
+      if (r.hasEntitlement) {
+        Alert.alert(
+          'Subscription Restored ✨',
+          'Your purchase has been linked to this device. Please sign in below to access your account.',
+        );
+        return;
+      }
+      // Friendly, bucketed messages — never let a raw SDK error reach the user.
+      if (r.error === 'network') {
+        Alert.alert('No internet', 'Please connect to Wi-Fi or cellular and try again.');
+      } else if (r.error === 'no_products' || r.error === 'unavailable' || r.error === 'sdk_unavailable') {
+        Alert.alert(
+          'Nothing to restore',
+          "We didn't find an active subscription on this Apple ID. If you just subscribed on another device, please wait a moment and try again, or sign in to your account.",
+        );
       } else {
         Alert.alert(
-          'Restore on the app',
-          'Restore Purchases works inside the native iPhone / Android app. On the web preview, please sign in to manage your Stripe subscription.',
+          'No purchase found',
+          "We didn't find an active subscription on this Apple ID. If you previously paid with a different account, switch to it in Settings → [your name] → Media & Purchases and try again.",
         );
       }
     } catch (e: any) {
-      Alert.alert('Restore failed', e?.message || 'Please try again');
-    } finally { setRestoring(false); }
+      Alert.alert(
+        'Restore failed',
+        'Something went wrong. Please check your connection and try again.',
+      );
+    } finally {
+      setRestoring(false);
+    }
   };
 
   return (

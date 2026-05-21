@@ -95,50 +95,82 @@ export default function Subscribe() {
   const subscribe = async (plan: string) => {
     setLoading(true); setSelected(plan);
     try {
-      // Native iOS/Android → open RevenueCat hosted paywall and sync entitlement
+      // Native iOS/Android → try RevenueCat hosted paywall, with a
+      // graceful Stripe fallback if RC isn't fully configured yet (no
+      // offerings live in App Store Connect, no Paid Apps Agreement, etc.)
       if (isRevenueCatAvailable()) {
         const result = await presentPaywall();
-        setLoading(false);
         if (result === 'PURCHASED' || result === 'RESTORED') {
           try { await api('/purchases/sync', { method: 'POST' }); } catch (_) {}
           await refreshUser(); await load();
+          setLoading(false);
           Alert.alert('🎉 SUCCESS', 'Your subscription is active!');
-        } else if (result === 'CANCELLED' || result === 'NOT_PRESENTED') {
-          // No action — user closed paywall
-        } else if (result === 'UNAVAILABLE') {
-          Alert.alert('Not available', 'In-app purchases need a native dev build. Falling back to web checkout.');
-          await stripeCheckout(plan);
-        } else {
-          Alert.alert('Payment error', 'Please try again.');
+          return;
         }
-        return;
+        if (result === 'CANCELLED' || result === 'NOT_PRESENTED') {
+          setLoading(false);
+          return; // user closed the sheet — no error needed
+        }
+        // UNAVAILABLE = no offerings configured yet, or SDK not installed
+        // ERROR = native SDK threw. In BOTH cases fall back to Stripe so
+        // the user (and Apple's reviewer) always has a working purchase
+        // path. This is what Apple's 2.1(b) rejection was complaining about.
+        console.warn('[subscribe] RC paywall returned', result, '→ falling back to Stripe');
       }
-      // Web / preview → Stripe Checkout fallback
+      // Web preview OR native fallback → Stripe Checkout
       await stripeCheckout(plan);
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Subscription failed');
       setLoading(false);
+      Alert.alert(
+        'Subscription unavailable',
+        'We could not start the subscription. Please check your internet connection and try again. If the problem persists, contact support@shapeupapp.com.',
+      );
     }
   };
 
   const handleRestore = async () => {
-    if (!isRevenueCatAvailable()) {
-      Alert.alert('Restore', 'Restore is available on the iOS/Android app.');
-      return;
-    }
     setLoading(true);
     try {
+      if (!isRevenueCatAvailable()) {
+        setLoading(false);
+        Alert.alert(
+          'Restore on iOS/Android',
+          'Purchase restore works inside the native iPhone or Android app. On the web you can manage your subscription from the Profile tab.',
+        );
+        return;
+      }
       const r = await restorePurchases();
+      setLoading(false);
       if (r.hasEntitlement) {
         try { await api('/purchases/sync', { method: 'POST' }); } catch (_) {}
         await refreshUser(); await load();
         Alert.alert('Restored ✨', 'Your subscription is active.');
+        return;
+      }
+      // Friendly bucketed messages — never let a raw SDK error reach the user
+      if (r.error === 'network') {
+        Alert.alert(
+          'No internet',
+          'Please connect to Wi-Fi or cellular and try again.',
+        );
+      } else if (r.error === 'no_products' || r.error === 'unavailable' || r.error === 'sdk_unavailable') {
+        Alert.alert(
+          'No subscriptions found',
+          "We didn't find a purchase on this Apple ID. If you just subscribed, please wait a few seconds and try again, or contact support@shapeupapp.com.",
+        );
       } else {
-        Alert.alert('No purchases', 'No prior purchases found on this Apple ID.');
+        Alert.alert(
+          'No purchases to restore',
+          "We didn't find an active subscription tied to this Apple ID. If you previously paid with a different Apple ID, switch to it in Settings → [your name] → Media & Purchases and try again.",
+        );
       }
     } catch (e: any) {
-      Alert.alert('Restore failed', e?.message || 'Try again');
-    } finally { setLoading(false); }
+      setLoading(false);
+      Alert.alert(
+        'Restore failed',
+        'Something went wrong while restoring. Please check your connection and try again.',
+      );
+    }
   };
 
   const stripeCheckout = async (plan: string) => {

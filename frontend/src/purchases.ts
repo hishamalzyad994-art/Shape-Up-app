@@ -104,6 +104,7 @@ export async function getEntitlementActive(): Promise<boolean> {
 
 export async function fetchOfferings() {
   if (!isRevenueCatAvailable()) return null;
+  await configureRC(null); // ensure SDK is initialised even pre-login
   const Purchases = await loadSDK();
   if (!Purchases) return null;
   try {
@@ -119,26 +120,36 @@ export async function fetchOfferings() {
 
 export async function presentPaywall(): Promise<PaywallResultLite> {
   if (!isRevenueCatAvailable()) return 'UNAVAILABLE';
+  await configureRC(null); // idempotent
   const UI = await loadUI();
   if (!UI?.presentPaywall) return 'UNAVAILABLE';
   try {
     const offering = await fetchOfferings();
-    const result = offering
-      ? await UI.presentPaywall({ offering })
-      : await UI.presentPaywall();
+    if (!offering) {
+      // No offerings configured yet in RevenueCat dashboard, or products
+      // not yet approved in App Store Connect. Don't throw — the caller
+      // (subscribe screen) will gracefully fall back to the web checkout.
+      console.warn('[RC] No offerings available — falling back');
+      return 'UNAVAILABLE';
+    }
+    const result = await UI.presentPaywall({ offering });
     return mapResult(result);
-  } catch (e) {
-    console.warn('[RC] presentPaywall failed', e);
+  } catch (e: any) {
+    console.warn('[RC] presentPaywall failed', e?.code, e?.message);
     return 'ERROR';
   }
 }
 
 export async function presentPaywallIfNeeded(): Promise<PaywallResultLite> {
   if (!isRevenueCatAvailable()) return 'UNAVAILABLE';
+  await configureRC(null);
   const UI = await loadUI();
   if (!UI?.presentPaywallIfNeeded) return 'UNAVAILABLE';
   try {
+    const offering = await fetchOfferings();
+    if (!offering) return 'UNAVAILABLE';
     const result = await UI.presentPaywallIfNeeded({
+      offering,
       requiredEntitlementIdentifier: ENTITLEMENT,
     });
     return mapResult(result);
@@ -148,18 +159,25 @@ export async function presentPaywallIfNeeded(): Promise<PaywallResultLite> {
   }
 }
 
-export async function restorePurchases(): Promise<{ ok: boolean; hasEntitlement: boolean }> {
-  if (!isRevenueCatAvailable()) return { ok: false, hasEntitlement: false };
+export async function restorePurchases(): Promise<{ ok: boolean; hasEntitlement: boolean; error?: string }> {
+  if (!isRevenueCatAvailable()) return { ok: false, hasEntitlement: false, error: 'unavailable' };
+  await configureRC(null); // critical: pre-login restore must still work
   const Purchases = await loadSDK();
-  if (!Purchases) return { ok: false, hasEntitlement: false };
+  if (!Purchases) return { ok: false, hasEntitlement: false, error: 'sdk_unavailable' };
   try {
     const info = await Purchases.restorePurchases();
     const has = !!info?.entitlements?.active?.[ENTITLEMENT];
     cachedHasEntitlement = has;
     return { ok: true, hasEntitlement: has };
-  } catch (e) {
-    console.warn('[RC] restore failed', e);
-    return { ok: false, hasEntitlement: false };
+  } catch (e: any) {
+    console.warn('[RC] restore failed', e?.code, e?.message);
+    // Convert RevenueCat error codes into friendly buckets the UI can show.
+    const code = e?.code ?? e?.userInfo?.readableErrorCode;
+    let bucket = 'unknown';
+    if (code === 'NETWORK_ERROR' || code === 10 || code === '10') bucket = 'network';
+    else if (code === 'MISSING_RECEIPT_FILE_ERROR' || code === 8 || code === '8') bucket = 'no_purchases';
+    else if (code === 'RECEIPT_ALREADY_IN_USE_ERROR' || code === 23 || code === '23') bucket = 'no_products';
+    return { ok: false, hasEntitlement: false, error: bucket };
   }
 }
 
