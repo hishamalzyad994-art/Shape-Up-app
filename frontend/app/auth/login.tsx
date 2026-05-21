@@ -32,9 +32,13 @@ export default function Login() {
     setRestoring(true);
     try {
       if (!isRevenueCatAvailable()) {
+        // Web / Expo Go fallback: the restore button on web has no native
+        // IAP to call, so guide the user clearly to the only meaningful
+        // action — sign in to their existing account.
         Alert.alert(
-          'Restore on iOS / Android',
-          'Restore Purchases works inside the native ShapeUp app from the App Store. On the web preview, please sign in to manage your Stripe subscription.',
+          'Sign in to restore',
+          'On the web, your subscription is tied to your ShapeUp account. Please sign in below using the same email you used when subscribing.',
+          [{ text: 'OK' }],
         );
         return;
       }
@@ -43,27 +47,39 @@ export default function Login() {
         Alert.alert(
           'Subscription Restored ✨',
           'Your purchase has been linked to this device. Please sign in below to access your account.',
+          [{ text: 'OK' }],
         );
         return;
       }
       // Friendly, bucketed messages — never let a raw SDK error reach the user.
+      const fallbackToSignIn = {
+        text: 'Sign in instead',
+        onPress: () => {/* the email field is already on screen */},
+      };
       if (r.error === 'network') {
-        Alert.alert('No internet', 'Please connect to Wi-Fi or cellular and try again.');
+        Alert.alert(
+          'No internet',
+          'Please connect to Wi-Fi or cellular and try again.',
+          [{ text: 'OK' }],
+        );
       } else if (r.error === 'no_products' || r.error === 'unavailable' || r.error === 'sdk_unavailable') {
         Alert.alert(
           'Nothing to restore',
-          "We didn't find an active subscription on this Apple ID. If you just subscribed on another device, please wait a moment and try again, or sign in to your account.",
+          "We couldn't find an active subscription on this Apple ID. If you subscribed using your ShapeUp account, sign in below.",
+          [fallbackToSignIn, { text: 'OK' }],
         );
       } else {
         Alert.alert(
           'No purchase found',
-          "We didn't find an active subscription on this Apple ID. If you previously paid with a different account, switch to it in Settings → [your name] → Media & Purchases and try again.",
+          "We couldn't find an active subscription on this Apple ID. If you previously paid with a different Apple ID, switch to it in Settings → [your name] → Media & Purchases, or sign in below with your ShapeUp account.",
+          [fallbackToSignIn, { text: 'OK' }],
         );
       }
     } catch (e: any) {
       Alert.alert(
         'Restore failed',
-        'Something went wrong. Please check your connection and try again.',
+        'Something went wrong. Please check your connection and try again. If the problem persists, contact support@shapeupapp.com.',
+        [{ text: 'OK' }],
       );
     } finally {
       setRestoring(false);
