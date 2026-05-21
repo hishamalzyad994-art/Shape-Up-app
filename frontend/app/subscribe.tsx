@@ -459,6 +459,30 @@ export default function Subscribe() {
             ? `${trialDays}-day free trial then auto-renews at the selected plan price until cancelled.`
             : 'Auto-renews until cancelled.'}
         </Text>
+
+        {/* Apple-required legal links + web app link */}
+        <View style={styles.legalLinksRow} testID="subscribe-legal-links">
+          <TouchableOpacity
+            testID="legal-link-website"
+            onPress={() => Linking.openURL('https://shapeupapp.base44.app/')}
+          >
+            <Text style={styles.legalLink}>OPEN WEB APP</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalDot}>•</Text>
+          <TouchableOpacity
+            testID="legal-link-eula"
+            onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}
+          >
+            <Text style={styles.legalLink}>EULA (TERMS OF USE)</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalDot}>•</Text>
+          <TouchableOpacity
+            testID="legal-link-privacy"
+            onPress={() => router.push('/privacy')}
+          >
+            <Text style={styles.legalLink}>PRIVACY</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -527,4 +551,7 @@ const styles = StyleSheet.create({
   cta: { backgroundColor: COLORS.secondary, paddingVertical: 18, alignItems: 'center', marginTop: 24 },
   ctaText: { color: '#000', fontWeight: '900', letterSpacing: 2, fontSize: 16 },
   legal: { color: COLORS.textDim, fontSize: 11, textAlign: 'center', marginTop: 16, lineHeight: 16 },
+  legalLinksRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 14, paddingHorizontal: 10, paddingBottom: 30 },
+  legalLink: { color: COLORS.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 1, textDecorationLine: 'underline' },
+  legalDot: { color: COLORS.textDim, fontSize: 11, marginHorizontal: 2 },
 });
