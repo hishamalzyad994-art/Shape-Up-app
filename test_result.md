@@ -220,19 +220,49 @@ frontend:
         agent: "testing"
         comment: "End-to-end UI test PASS on /subscribe at iPhone 12 (390x844) & Galaxy S21 (360x800). Registered fresh user trialtest_990615@cy.com, completed onboarding, landed on /subscribe. Verified: (a) trial-banner shows '3 DAYS FREE TRIAL' badge, 'Try ShapeUp Pro free for 3 days' title, 'Card required up front. You won't be charged today.' subtitle, and bold 'Cancel anytime before the trial ends to avoid being charged.' line. (b) All 3 plan cards (plan-monthly, plan-sixmonths, plan-yearly) show '£0.00' + 'FREE for 3 days' + 'then £3.99/£19.99/£34.99' with correct AUTO-RENEW (monthly) and BEST VALUE (yearly) badges. (c) CTA 'subscribe-btn' text exactly 'START 3-DAY FREE TRIAL'; tapping it produced POST /api/subscription/checkout → 200 and browser navigated to https://checkout.stripe.com/c/pay/cs_test_... — Stripe redirect initiated successfully. (d) 'trial-disclaimer' visible below CTA with correct text. (e) After login as test@cy.com (existing subscriber): trial-banner NOT rendered (count=0), 'sub-active-card' with 'YOU'RE PRO ✨' visible. NOTE: cancel-subscription-btn is conditionally rendered only when auto_renew=true AND !cancel_at_period_end — for test@cy.com the active card shows 'Access until 5/15/2026' (auto_renew=false), so the cancel button is intentionally hidden per the implemented logic. This is correct behavior, not a bug; review request expectation just didn't match this account's auto_renew state. All other critical paywall UI requirements PASS."
 
+  - task: "App Store Rejection 2.1(a) — RevenueCat purchase instantly unlocks the app (no paywall trap)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/subscribe.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Apple rejected 2.1(a): user trapped on paywall after a successful purchase. Three independent bugs were hiding behind this single symptom and are now fixed: (1) AuthContext.tsx — `markSubscriptionActive` was declared in the type but never put into the Provider value object, so calling it from subscribe.tsx would throw `is not a function`. Now exposed correctly. (2) subscribe.tsx — after RC returns PURCHASED/RESTORED, we now (a) call `markSubscriptionActive(plan)` to optimistically flip the AuthContext subscription to active using the on-device entitlement, (b) fire `/purchases/sync` to backend in the background, (c) call `refreshSubscription` + `refreshUser` async, (d) show the SUCCESS alert with an explicit `onPress: () => router.replace('/(tabs)')` so the user is navigated into the app and CANNOT remain trapped on the paywall. Restore path does the same. (3) Apple 3.1.1 compliance — removed the Stripe fallback on iOS/Android native. If RevenueCat returns UNAVAILABLE/ERROR we now show a clear retry message instead of opening Stripe via Linking.openURL (which Apple would reject as an external payment link). Stripe is now ONLY reachable on Platform.OS === 'web'. Verified bundle compiles & /subscribe renders without errors via screenshot."
+
+  - task: "Backend /api/purchases/sync remains stable + reviewer bypass intact"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "No backend code changes in this iteration, but please regression-test that (a) POST /api/purchases/sync returns 200 with the soft-fail note when REVENUECAT_SECRET_KEY is not set (b) POST /api/purchases/webhook with no auth returns 200 ignored (c) reviewer accounts (shapeupapp2026@gmail.com) still hit `_ensure_reviewer_subscription` and get an active subscription without paying."
+      - working: true
+        agent: "testing"
+        comment: "Regression test (/app/regression_test.py) against external URL — 20/20 PASS. (1) POST /api/purchases/sync with test@cy.com → 200 {active:true, source:'local', note:'RevenueCat secret key not configured on server.'} — NO 500. (2) POST /api/purchases/webhook with empty event → 200 {ok:true, ignored:'no app_user_id'}; with unknown app_user_id → 200 {ok:true, ignored:'user not found'} — NO 500. (3) Reviewer bypass: shapeupapp2026@gmail.com logged in successfully, GET /api/subscription/status → 200 active=true plan='yearly' (via _ensure_reviewer_subscription), GET /api/workouts/today → 200 (not 402). (4) Pro regression suite (test@cy.com): GET /auth/me, /subscription/status, /subscription/plans?country=US (currency=USD), /subscription/plans?country=GB (currency=GBP), /workouts/today, /chat/history, /food/today all return 200. (5) Fresh user paywall regression (regr_f25c4e5c66@cy.com): /subscription/status active=false, POST /food/scan → 402 Subscription Required, POST /food/log → 402 Subscription Required. No 5xx errors observed. PASS."
+
 metadata:
   created_by: "main_agent"
-  version: "1.1"
-  test_sequence: 6
+  version: "1.2"
+  test_sequence: 7
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "App Store Rejection 2.1(a) — RevenueCat purchase instantly unlocks the app (no paywall trap)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
+  - agent: "testing"
+    message: "REGRESSION (App Store 2.1(a) iteration) — Backend 20/20 PASS via /app/regression_test.py against external URL. (1) POST /api/purchases/sync (test@cy.com) → 200 with note 'RevenueCat secret key not configured on server.' — NO 5xx. (2) POST /api/purchases/webhook → 200 {ok:true, ignored:'no app_user_id'} for empty event payload, and 200 {ok:true, ignored:'user not found'} for unknown app_user_id — NO 5xx. (3) Reviewer bypass (shapeupapp2026@gmail.com / ShapeUp1234_S): login succeeds, GET /api/subscription/status → active=true plan=yearly (via _ensure_reviewer_subscription which sets a 10-year reviewer subscription), GET /api/workouts/today → 200 (paywall bypassed). (4) Pro account regression (test@cy.com): /auth/me, /subscription/status, /subscription/plans?country=US (USD), /subscription/plans?country=GB (GBP), /workouts/today, /chat/history, /food/today all return 200. (5) Fresh user paywall (regr_<rand>@cy.com): /subscription/status active=false, POST /food/scan 402, POST /food/log 402 — non-subscribed users still correctly paywalled. No 5xx errors observed in any test or in backend logs. Backend purchases/sync + reviewer bypass remain fully stable after the frontend-only 2.1(a) fix."
   - agent: "main"
     message: "ITERATION 9 — RevenueCat (Native IAP) Scaffolded. Added cross-platform wrapper /app/frontend/src/purchases.ts that lazy-loads react-native-purchases on iOS/Android and short-circuits on web (web/preview keeps using Stripe). AuthContext now calls configureRC(userId) on load, logInRC on signin/up, logOutRC on signout — using JWT user id as appUserID. Subscribe screen routes: native→presentPaywall, web→Stripe; added RESTORE PURCHASES button. Profile gained MANAGE SUBSCRIPTION → presentCustomerCenter (native only). Backend added: POST /api/purchases/sync (uses REVENUECAT_SECRET_KEY to fetch /v1/subscribers/{app_user_id} and mirror entitlement into users.subscription); POST /api/purchases/webhook (checks Authorization header against REVENUECAT_WEBHOOK_AUTH and re-syncs the subscriber). Both endpoints soft-fail when REVENUECAT_SECRET_KEY is empty. iOS bundle id updated to app.emergent.slimchallenge5de71fad6 to match the user's RevenueCat app. PLEASE verify backend only: (1) POST /api/purchases/sync without REVENUECAT_SECRET_KEY → expect 200 with note 'RevenueCat secret key not configured on server.' (2) POST /api/purchases/webhook without auth header configured → expect 200 with ignored payload (3) Existing endpoints still return 200 (auth/login, subscription/plans?country=GB, subscription/status, food/today, food/log, food/scan). DO NOT run frontend tests."
   - agent: "testing"

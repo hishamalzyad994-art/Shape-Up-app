@@ -11,7 +11,7 @@ import { isRevenueCatAvailable, presentPaywall, restorePurchases, getEntitlement
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Subscribe() {
-  const { api, refreshUser, user } = useAuth();
+  const { api, refreshUser, user, markSubscriptionActive, refreshSubscription } = useAuth();
   const router = useRouter();
   const { t, country: ctxCountry } = useLang();
   const { session_id } = useLocalSearchParams<{ session_id?: string }>();
@@ -95,30 +95,66 @@ export default function Subscribe() {
   const subscribe = async (plan: string) => {
     setLoading(true); setSelected(plan);
     try {
-      // Native iOS/Android → try RevenueCat hosted paywall, with a
-      // graceful Stripe fallback if RC isn't fully configured yet (no
-      // offerings live in App Store Connect, no Paid Apps Agreement, etc.)
+      // Native iOS/Android → MUST use RevenueCat (Apple Guideline 3.1.1 / Google Play Billing).
+      // We do NOT fall back to Stripe on native — Apple rejects external payment links.
       if (isRevenueCatAvailable()) {
         const result = await presentPaywall();
         if (result === 'PURCHASED' || result === 'RESTORED') {
-          try { await api('/purchases/sync', { method: 'POST' }); } catch (_) {}
-          await refreshUser(); await load();
+          // 1) Optimistically unlock the app IMMEDIATELY using the local
+          //    RevenueCat entitlement. This is what Apple's 2.1(a) rejection
+          //    was about — never trap the user on the paywall after a
+          //    successful purchase, even if our backend sync is slow/down.
+          markSubscriptionActive(plan);
+          // 2) Best-effort backend sync (will be a no-op if REVENUECAT_SECRET_KEY
+          //    isn't set on the server yet — that's fine, the SDK is authoritative).
+          api('/purchases/sync', { method: 'POST' }).catch(() => {});
+          // 3) Schedule the daily reminder so we deliver on the value prop.
+          try {
+            const { scheduleDailyReminder } = await import('../src/notifications');
+            scheduleDailyReminder(9, 0).catch(() => {});
+          } catch (_) {}
+          // 4) Refresh subscription state in the background, then navigate
+          //    the user into the app. We use replace() so the back button
+          //    can't bring them back to the paywall.
+          refreshSubscription().catch(() => {});
+          refreshUser().catch(() => {});
           setLoading(false);
-          Alert.alert('🎉 SUCCESS', 'Your subscription is active!');
+          Alert.alert(
+            result === 'RESTORED' ? 'Restored ✨' : '🎉 SUCCESS',
+            result === 'RESTORED'
+              ? 'Your subscription is active.'
+              : 'Your subscription is active!',
+            [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }],
+          );
           return;
         }
         if (result === 'CANCELLED' || result === 'NOT_PRESENTED') {
           setLoading(false);
           return; // user closed the sheet — no error needed
         }
-        // UNAVAILABLE = no offerings configured yet, or SDK not installed
-        // ERROR = native SDK threw. In BOTH cases fall back to Stripe so
-        // the user (and Apple's reviewer) always has a working purchase
-        // path. This is what Apple's 2.1(b) rejection was complaining about.
-        console.warn('[subscribe] RC paywall returned', result, '→ falling back to Stripe');
+        // UNAVAILABLE / ERROR on native = RC not yet fully configured, no
+        // offerings live, or App Store sandbox issue. We CANNOT fall back to
+        // Stripe on native (Apple/Google rejection). Show a clear retry msg.
+        setLoading(false);
+        Alert.alert(
+          'Subscription temporarily unavailable',
+          'The App Store is not responding right now. Please check your internet connection, make sure you\'re signed in to the App Store, and try again in a moment.\n\nIf the problem persists, email support@shapeupapp.com.',
+        );
+        return;
       }
-      // Web preview OR native fallback → Stripe Checkout
-      await stripeCheckout(plan);
+      // Web preview ONLY → Stripe Checkout. Native builds NEVER reach here
+      // because isRevenueCatAvailable() is true on iOS/Android with API keys.
+      if (Platform.OS === 'web') {
+        await stripeCheckout(plan);
+        return;
+      }
+      // Native build without RC API keys = misconfigured build. Don't fall
+      // back to Stripe — fail loudly so we catch it in QA before submission.
+      setLoading(false);
+      Alert.alert(
+        'Subscription unavailable',
+        'In-app purchases are not configured for this build. Please reinstall the app from the App Store or Google Play.',
+      );
     } catch (e: any) {
       setLoading(false);
       Alert.alert(
@@ -142,9 +178,16 @@ export default function Subscribe() {
       const r = await restorePurchases();
       setLoading(false);
       if (r.hasEntitlement) {
-        try { await api('/purchases/sync', { method: 'POST' }); } catch (_) {}
-        await refreshUser(); await load();
-        Alert.alert('Restored ✨', 'Your subscription is active.');
+        // Unlock immediately + navigate so the user can never get trapped.
+        markSubscriptionActive('yearly');
+        api('/purchases/sync', { method: 'POST' }).catch(() => {});
+        refreshSubscription().catch(() => {});
+        refreshUser().catch(() => {});
+        Alert.alert(
+          'Restored ✨',
+          'Your subscription is active.',
+          [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }],
+        );
         return;
       }
       // Friendly bucketed messages — never let a raw SDK error reach the user
