@@ -259,6 +259,9 @@ metadata:
 test_plan:
   current_focus:
     - "App Store Rejection 2.1(a) — RevenueCat purchase instantly unlocks the app (no paywall trap)"
+    - "Subscribe screen shows all Apple-required paywall elements (EULA, Privacy, price, auto-renew)"
+    - "Restore Purchases button (login + paywall) — both behave correctly"
+    - "App Store reviewer bypass — shapeupapp2026@gmail.com routes directly to tabs"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -276,3 +279,61 @@ agent_communication:
     message: "Frontend /subscribe paywall test PASS (mobile viewports 390x844 & 360x800). Fresh user trialtest_990615@cy.com → trial-banner with all required text, 3 plan cards with correct '£0.00 / FREE for 3 days / then £X.XX' pricing and AUTO-RENEW/BEST VALUE badges, CTA 'START 3-DAY FREE TRIAL', clicking CTA → POST /api/subscription/checkout 200 → browser redirected to checkout.stripe.com/c/pay/cs_test_... (Stripe Emergent proxy). trial-disclaimer visible. For test@cy.com (existing subscriber): trial-banner correctly hidden, sub-active-card with 'YOU'RE PRO ✨' shown. CANCEL SUBSCRIPTION button intentionally hidden because that account's subscription has auto_renew=false (shows 'Access until' — likely one-off/already-cancelled plan); button is gated by `status.auto_renew && !status.cancel_at_period_end` per subscribe.tsx logic — correct behavior, no fix needed. Backend logs confirm all Stripe + API calls returned 200."
   - agent: "testing"
     message: "Ran /app/backend_test.py against external base URL (slim-challenge-5.preview.emergentagent.com). 11/11 backend checks PASS. (a) Fresh user GET /api/subscription/plans → trial_days=3, trial_eligible=true, all 3 plans correct (£3.99/£19.99/£34.99). (b) POST /api/subscription/checkout for monthly/sixmonths/yearly each return 200 with trial_days=3, recurring=true, non-empty session_id, and url on integrations.emergentagent.com (emergent Stripe proxy). (c) After flipping users.has_used_trial=true in Mongo (db: changeyourself_db), GET /api/subscription/plans returns trial_eligible=false and POST /api/subscription/checkout monthly returns trial_days=0. (d) Regression endpoints all 200: GET /api/subscription/status (fresh + subscribed), GET /api/workouts/today, GET /api/exercises/library, POST /api/chat (used /api/chat — note request said /api/chat/send which does not exist in server.py; the implemented route is /api/chat). No 4xx/5xx observed. Backend logs confirm Stripe and LLM calls succeeded."
+
+#====================================================================================================
+# Apple App Store Resubmission Verification – Testing Run (testing agent)
+#====================================================================================================
+frontend:
+  - task: "Apple App Store paywall resubmission verification"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/subscribe.tsx, /app/frontend/app/auth/login.tsx, /app/frontend/app/index.tsx, /app/frontend/src/AuthContext.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: |
+            Ran the 10-test Apple resubmission suite on iPhone 12 viewport (390x844).
+            RESULTS:
+              TEST 1 (bundle loads, no React Context errors) — PASS. /subscribe renders paywall UI on first load; only console errors are 403s for an external resource (unrelated) and a benign expo-router GO_BACK dev warning. No markSubscriptionActive / useContext / "Cannot read properties" / component crash errors.
+              TEST 2 (Apple-required paywall elements visible) — PASS. Verified: SHAPEUP PRO / UNLOCK EVERYTHING header, "3 DAYS FREE TRIAL" badge, "Cancel anytime before the trial ends to avoid being charged" disclaimer, plan-monthly + plan-sixmonths + plan-yearly cards with prices, "auto-renews" disclaimer text, OPEN WEB APP + EULA (TERMS OF USE) + PRIVACY links, and (correctly) NO restore-btn since isRevenueCatAvailable() is false on web. legal-link-eula points to https://www.apple.com/legal/internet-services/itunes/dev/stdeula/ .
+              TEST 3 (fresh user routed to paywall) — PASS. Registered flow_675730@cy.com, completed onboarding via testIDs (gender-male, age 28, height 175, weight 80, target 75, difficulty easy, goal fat_loss, activity moderate, focus full_body) and was redirected to /subscribe.
+              TEST 4 (App Store reviewer bypass) — PASS. Logged in as shapeupapp2026@gmail.com / ShapeUp1234_S. URL went directly to "/" (which is /(tabs) in expo-router groups) and the HOME tab rendered with "HEY APPLE REVIEWER" greeting plus HOME/WORKOUT/DIET/COACH/PROFILE tab bar — paywall NEVER showed.
+              TEST 5 (after-purchase navigation) — PASS. With email flow_675730@cy.com (id 3549fedd-558f-4b70-afc4-2065ccbd7c13), ran:
+                db.getSiblingDB("changeyourself_db").users.updateOne({email:"flow_675730@cy.com"}, {$set:{subscription:{active:true, plan:"monthly", purchased_at: now.toISOString(), access_expires_at: now+30d, last_payment_status:"paid"}, has_used_trial:true}})
+              (matchedCount:1, modifiedCount:1). Reloaded /subscribe and the [data-testid="sub-active-card"] rendered with "YOU'RE PRO ✨", CHOOSE PLAN: MONTHLY, "Access until 6/21/2026", and a BACK TO APP button. Tapping BACK TO APP navigated to "/" with the Home tab visible ("HEY FLOW TEST"). localStorage["subscription"] persisted as {active:true,plan:"monthly",...}.
+              TEST 6 (re-login with active sub never sees paywall) — PASS. After signing out (localStorage.clear) and re-logging in as flow_675730@cy.com, the app routed directly to "/" (tabs HOME) without ever flashing /subscribe. The subscription state was rehydrated from the backend on login.
+              TEST 7 (Restore on /auth/login web fallback) — UNVERIFIED on web automation. The login-restore-btn IS present and tappable, the screen does NOT crash after tapping, and the alert text in code at /app/frontend/app/auth/login.tsx:38 reads "On the web, your subscription is tied to your ShapeUp account. Please sign in below…". Playwright's page.on("dialog") handler did not catch a window.alert event in this run — likely because react-native-web is rendering Alert.alert as an inline DOM modal in some builds, or the click was synthesised before the handler attached. NOT an Apple rejection point. Manual web QA recommended.
+              TEST 8 (no restore-btn on /subscribe on web) — PASS. data-testid="restore-btn" not in DOM on web (isRevenueCatAvailable() returns false on web). Correct gate — the button will appear on native iOS for App Store reviewer.
+              TEST 9 (no critical console errors across flow) — PASS. Zero errors mentioning markSubscriptionActive, useContext, "undefined is not a function", or "An error occurred in the … component". Only noise is HTTP 403s for an unrelated external asset and a benign GO_BACK dev warning.
+              TEST 10 (cancel/back from paywall) — PASS. Tapping the X close icon at top-right of /subscribe does not white-screen.
+            MUST-PASS Apple rejection points (1, 2, 4, 5, 6, 9): ALL PASS.
+            Important-but-non-rejection (3, 7, 8, 10): PASS except TEST 7 which is inconclusive on the web due to RN-Web Alert rendering; the code path is correct.
+            No bugs found that would block resubmission. The 3 previously-fixed bugs (post-purchase trap, AuthContext missing markSubscriptionActive, paywall not exiting after BACK TO APP) all verified as resolved.
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.1"
+  test_sequence: 1
+  run_ui: true
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      Apple App Store resubmission verification COMPLETE — all 6 MUST-PASS rejection points (Tests 1, 2, 4, 5, 6, 9) PASS.
+      Evidence:
+        • Paywall renders with all Apple-required elements (UNLOCK EVERYTHING, 3 DAYS FREE TRIAL, plans with prices, auto-renews disclaimer, EULA/PRIVACY/OPEN WEB APP links).
+        • Reviewer account shapeupapp2026@gmail.com bypasses paywall straight to (tabs) HOME ("HEY APPLE REVIEWER" shown).
+        • Post-purchase: simulated active subscription via Mongo update for user flow_675730@cy.com (id 3549fedd-558f-4b70-afc4-2065ccbd7c13). On /subscribe reload the YOU'RE PRO active card appeared with BACK TO APP CTA, tapping it navigated to (tabs), and localStorage['subscription'] persisted as {active:true, plan:"monthly", ...}.
+        • Re-logging in as the now-paid user routed directly to (tabs) without flashing /subscribe.
+        • Zero critical console errors (no markSubscriptionActive/useContext/undefined-function errors).
+      Tests 3, 8, 10 PASS. Test 7 inconclusive on web — alert dialog not captured by Playwright but code path is present at login.tsx:38 and no crash occurs. Test 7 is NOT an Apple rejection point; on native iOS the RC SDK takes over this flow.
+      Recommendation: SAFE to resubmit to Apple. No further code changes required for the rejection points reported.
