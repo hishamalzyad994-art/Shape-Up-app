@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { configureRC, logInRC, logOutRC, isRevenueCatAvailable } from './purchases';
+import { configureRC, logInRC, logOutRC, isRevenueCatAvailable, getEntitlementActive } from './purchases';
 
 const API_URL = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
@@ -33,6 +33,7 @@ type AuthCtx = {
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
   refreshSubscription: () => Promise<SubscriptionStatus | null>;
+  markSubscriptionActive: (plan?: string) => void;
   api: <T = any>(path: string, opts?: RequestInit) => Promise<T>;
 };
 
@@ -71,16 +72,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [api]);
 
   const refreshSubscription = useCallback(async (): Promise<SubscriptionStatus | null> => {
+    let backend: SubscriptionStatus | null = null;
     try {
-      const s = await api<SubscriptionStatus>('/subscription/status');
-      setSubscription(s);
-      await AsyncStorage.setItem('subscription', JSON.stringify(s));
-      return s;
-    } catch (_) {
-      setSubscription(null);
-      return null;
+      backend = await api<SubscriptionStatus>('/subscription/status');
+    } catch (_) { backend = null; }
+
+    // If the backend reports inactive, double-check with the on-device
+    // RevenueCat entitlement — this happens when the backend can't reach
+    // RevenueCat (no REVENUECAT_SECRET_KEY) but the user has actually
+    // purchased on-device. Trust the SDK as a fallback so the user
+    // doesn't get trapped in an infinite paywall redirect loop.
+    if ((!backend || !backend.active) && isRevenueCatAvailable()) {
+      try {
+        const rcActive = await getEntitlementActive();
+        if (rcActive) {
+          backend = {
+            ...(backend || {}),
+            active: true,
+            plan: backend?.plan || 'yearly',
+            access_expires_at: backend?.access_expires_at || new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+          };
+          // Best-effort: ping the server so it can mirror this state when
+          // REVENUECAT_SECRET_KEY is eventually configured. Failures here
+          // are silent — the user is already through.
+          api('/purchases/sync', { method: 'POST' }).catch(() => {});
+        }
+      } catch (_) {}
     }
+
+    setSubscription(backend);
+    try { await AsyncStorage.setItem('subscription', backend ? JSON.stringify(backend) : ''); } catch (_) {}
+    return backend;
   }, [api]);
+
+  /** Optimistically flip the local subscription to active. Called right after
+   *  RevenueCat reports PURCHASED or RESTORED so the user can enter the app
+   *  immediately without waiting on the (best-effort) backend sync. */
+  const markSubscriptionActive = useCallback((plan?: string) => {
+    const next: SubscriptionStatus = {
+      active: true,
+      plan: plan || 'yearly',
+      access_expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+    };
+    setSubscription(next);
+    AsyncStorage.setItem('subscription', JSON.stringify(next)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     (async () => {
