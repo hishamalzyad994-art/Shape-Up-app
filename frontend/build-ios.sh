@@ -53,6 +53,20 @@ cd "$(dirname "$0")"
 echo "→ Working directory: $(pwd)"
 echo ""
 
+# ── Install dependencies (Expo needs node_modules to resolve plugins) ────────
+if [ ! -d "node_modules" ] || [ ! -d "node_modules/expo-router" ]; then
+  echo "→ Installing dependencies (this takes ~2 min the first time)..."
+  if command -v yarn >/dev/null 2>&1; then
+    yarn install --network-timeout 600000
+  else
+    npm install --legacy-peer-deps
+  fi
+  echo ""
+else
+  echo "→ Dependencies already installed, skipping yarn install"
+  echo ""
+fi
+
 # ── Verify Expo auth ─────────────────────────────────────────────────────────
 echo "→ Verifying Expo login..."
 WHO=$(npx -y eas-cli@latest whoami 2>&1)
