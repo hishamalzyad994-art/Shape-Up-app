@@ -1,11 +1,18 @@
-yaml
-name: Create Production Builds
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+
 jobs:
   build_android:
+    name: Build Android App
     type: build
     params:
       platform: android
   build_ios:
+    name: Build iOS App
     type: build
     params:
       platform: ios
