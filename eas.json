@@ -16,3 +16,9 @@
     "production": {}
   }
 }
+{
+  "ios": {
+    "bundleIdentifier": "app.emergent.slimchallenge5de71fad6"
+  }
+}
+
