@@ -9,7 +9,7 @@ import { configureRC, logInRC, logOutRC, isRevenueCatAvailable, getEntitlementAc
 // production preview URL so the auth flow always has a valid origin to hit.
 const FALLBACK_BACKEND = 'https://slim-challenge-5.preview.emergentagent.com';
 const RAW_BACKEND = (process.env.EXPO_PUBLIC_BACKEND_URL || '').trim();
-const BACKEND_BASE = RAW_BACKEND && /^https?:\/\//i.test(RAW_BACKEND) ? RAW_BACKEND : FALLBACK_BACKEND;
+const BACKEND_BASE = 'https://slim-challenge-5.preview.emergentagent.com';
 const API_URL = `${BACKEND_BASE}/api`;
 
 // Translate cryptic browser/native fetch errors (CORS, DNS, iOS WebKit's
