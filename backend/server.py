@@ -81,7 +81,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 # list small and lower-cased; never expose this list in any API response.
 REVIEWER_EMAILS = {
     "shapeupapp2026@gmail.com",
-    "hishamalzyad999@gmail.com",
+    "hishamalahmad999@gmail.com",
     "hishamalzyad994@gmail.com",
     "reviewshapeup@gmail.com",
 }
