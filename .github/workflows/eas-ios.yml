@@ -1,68 +1,24 @@
-name: 📲 EAS Build & Submit to TestFlight
-
-# Triggers:
-#  - Every push to the main branch will build + submit a fresh iOS build to
-#    App Store Connect / TestFlight.
-#  - You can also kick it off manually from the GitHub "Actions" tab on your
-#    phone (the workflow dispatch button).
-#
-# Required GitHub repo secret:
-#   EXPO_TOKEN  – an Expo "Personal Access Token" (create one at
-#                 https://expo.dev/accounts/<you>/settings/access-tokens).
-#
-# First-time Apple credential setup must still happen once on a terminal
-# (Codespaces is free and works on iPhone Safari):
-#   1. cd frontend
-#   2. eas login
-#   3. eas credentials             # follow prompts, enter Apple ID + app-specific password
-# After that initial setup, EAS keeps the credentials encrypted on Expo's
-# server and every push to main below will reuse them automatically.
+name: Create Production Builds
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'frontend/**'
   workflow_dispatch:
-    inputs:
-      profile:
-        description: 'EAS build profile'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - preview
 
 jobs:
-  ios:
-    name: iOS build + auto-submit
+  build_ios:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Setup EAS CLI
+        run: npm install -g eas-cli
 
-      - name: Install deps
-        run: yarn install --frozen-lockfile
-
-      - name: Build & submit iOS
-        run: |
-          eas build \
-            --platform ios \
-            --profile ${{ github.event.inputs.profile || 'production' }} \
-            --non-interactive \
-            --auto-submit
+      - name: Run EAS Build iOS
+        run: eas build --platform ios --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
