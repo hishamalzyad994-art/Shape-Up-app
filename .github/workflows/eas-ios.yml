@@ -21,4 +21,4 @@ jobs:
       - name: Run EAS Build iOS
         run: eas build --platform ios --non-interactive
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_TOKEN: "RfCCwFxP0gxV5ZhC_8wCQy6f9PSt7bGMNY8Bfa0v"
