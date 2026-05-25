@@ -2,7 +2,33 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { configureRC, logInRC, logOutRC, isRevenueCatAvailable, getEntitlementActive } from './purchases';
 
-const API_URL = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
+// Bullet-proof API base URL. If a production build was created without the
+// EXPO_PUBLIC_BACKEND_URL env var baked in, `process.env.EXPO_PUBLIC_BACKEND_URL`
+// is `undefined` and `fetch("undefined/api/...")` throws iOS WebKit's cryptic
+// "The string did not match the expected pattern". Fall back to the live
+// production preview URL so the auth flow always has a valid origin to hit.
+const FALLBACK_BACKEND = 'https://slim-challenge-5.preview.emergentagent.com';
+const RAW_BACKEND = (process.env.EXPO_PUBLIC_BACKEND_URL || '').trim();
+const BACKEND_BASE = RAW_BACKEND && /^https?:\/\//i.test(RAW_BACKEND) ? RAW_BACKEND : FALLBACK_BACKEND;
+const API_URL = `${BACKEND_BASE}/api`;
+
+// Translate cryptic browser/native fetch errors (CORS, DNS, iOS WebKit's
+// "The string did not match the expected pattern" for malformed URLs, etc.)
+// into a single friendly message the user can act on. NEVER expose the raw
+// iOS WebKit error to the user — they think it's their password.
+function friendlyFetchError(e: any): Error {
+  const msg = String(e?.message || e || '').toLowerCase();
+  if (
+    msg.includes('did not match the expected pattern') ||
+    msg.includes('invalid url') ||
+    msg.includes('network request failed') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('load failed')
+  ) {
+    return new Error("Can't reach the server. Please check your internet connection and try again.");
+  }
+  return e instanceof Error ? e : new Error(String(e || 'Request failed'));
+}
 
 type User = {
   id: string;
@@ -49,9 +75,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = token || (await AsyncStorage.getItem('token'));
     const headers: any = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
     if (stored) headers['Authorization'] = `Bearer ${stored}`;
-    const res = await fetch(`${API_URL}${path}`, { ...opts, headers });
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}${path}`, { ...opts, headers });
+    } catch (e) {
+      throw friendlyFetchError(e);
+    }
     const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
+    let data: any = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (_) { data = {}; }
     if (!res.ok) {
       throw new Error(data.detail || `Request failed (${res.status})`);
     }
@@ -136,13 +168,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const res = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Login failed');
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch (e) {
+      throw friendlyFetchError(e);
+    }
+    const text = await res.text();
+    let data: any = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (_) { data = {}; }
+    if (!res.ok) throw new Error(data.detail || 'Invalid email or password');
     await AsyncStorage.setItem('token', data.token);
     await AsyncStorage.setItem('user', JSON.stringify(data.user));
     setToken(data.token);
@@ -154,12 +193,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, name: string) => {
-    const res = await fetch(`${API_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name }),
-    });
-    const data = await res.json();
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, name }),
+      });
+    } catch (e) {
+      throw friendlyFetchError(e);
+    }
+    const text = await res.text();
+    let data: any = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (_) { data = {}; }
     if (!res.ok) throw new Error(data.detail || 'Sign up failed');
     await AsyncStorage.setItem('token', data.token);
     await AsyncStorage.setItem('user', JSON.stringify(data.user));
