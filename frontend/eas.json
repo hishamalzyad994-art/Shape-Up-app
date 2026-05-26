@@ -28,6 +28,7 @@
       "channel": "preview"
     },
     "production": {
+      "autoIncrement": true,
       "ios": {
         "resourceClass": "m-medium"
       },
