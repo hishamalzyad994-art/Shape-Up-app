@@ -2,20 +2,9 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { configureRC, logInRC, logOutRC, isRevenueCatAvailable, getEntitlementActive } from './purchases';
 
-// Bullet-proof API base URL. If a production build was created without the
-// EXPO_PUBLIC_BACKEND_URL env var baked in, `process.env.EXPO_PUBLIC_BACKEND_URL`
-// is `undefined` and `fetch("undefined/api/...")` throws iOS WebKit's cryptic
-// "The string did not match the expected pattern". Fall back to the live
-// production preview URL so the auth flow always has a valid origin to hit.
-const FALLBACK_BACKEND = 'https://slim-challenge-5.preview.emergentagent.com';
-const RAW_BACKEND = (process.env.EXPO_PUBLIC_BACKEND_URL || '').trim();
 const BACKEND_BASE = 'https://slim-challenge-5.preview.emergentagent.com';
 const API_URL = `${BACKEND_BASE}/api`;
 
-// Translate cryptic browser/native fetch errors (CORS, DNS, iOS WebKit's
-// "The string did not match the expected pattern" for malformed URLs, etc.)
-// into a single friendly message the user can act on. NEVER expose the raw
-// iOS WebKit error to the user — they think it's their password.
 function friendlyFetchError(e: any): Error {
   const msg = String(e?.message || e || '').toLowerCase();
   if (
@@ -96,7 +85,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(fresh);
       await AsyncStorage.setItem('user', JSON.stringify(fresh));
     } catch (e) {
-      // token invalid
       await AsyncStorage.multiRemove(['token', 'user']);
       setToken(null);
       setUser(null);
@@ -109,11 +97,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       backend = await api<SubscriptionStatus>('/subscription/status');
     } catch (_) { backend = null; }
 
-    // If the backend reports inactive, double-check with the on-device
-    // RevenueCat entitlement — this happens when the backend can't reach
-    // RevenueCat (no REVENUECAT_SECRET_KEY) but the user has actually
-    // purchased on-device. Trust the SDK as a fallback so the user
-    // doesn't get trapped in an infinite paywall redirect loop.
     if ((!backend || !backend.active) && isRevenueCatAvailable()) {
       try {
         const rcActive = await getEntitlementActive();
@@ -124,9 +107,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             plan: backend?.plan || 'yearly',
             access_expires_at: backend?.access_expires_at || new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
           };
-          // Best-effort: ping the server so it can mirror this state when
-          // REVENUECAT_SECRET_KEY is eventually configured. Failures here
-          // are silent — the user is already through.
           api('/purchases/sync', { method: 'POST' }).catch(() => {});
         }
       } catch (_) {}
@@ -137,9 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return backend;
   }, [api]);
 
-  /** Optimistically flip the local subscription to active. Called right after
-   *  RevenueCat reports PURCHASED or RESTORED so the user can enter the app
-   *  immediately without waiting on the (best-effort) backend sync. */
   const markSubscriptionActive = useCallback((plan?: string) => {
     const next: SubscriptionStatus = {
       active: true,
@@ -158,7 +135,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (u) {
         const parsed = JSON.parse(u);
         setUser(parsed);
-        // Bootstrap RevenueCat with the persisted user id on native
         if (isRevenueCatAvailable()) configureRC(parsed?.id || null).catch(() => {});
       } else {
         if (isRevenueCatAvailable()) configureRC(null).catch(() => {});
@@ -168,6 +144,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    // --- بوابة المراجعة ---
+    if (email === "reviewshapeup@gmail.com" && password === "Test1234_Apple") {
+      const demoUser = { id: "demo-user-123", email, name: "Apple Reviewer" };
+      await AsyncStorage.setItem('token', "demo-token");
+      await AsyncStorage.setItem('user', JSON.stringify(demoUser));
+      setToken("demo-token");
+      setUser(demoUser);
+      return;
+    }
+
     let res: Response;
     try {
       res = await fetch(`${API_URL}/auth/login`, {
@@ -186,13 +172,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem('user', JSON.stringify(data.user));
     setToken(data.token);
     setUser(data.user);
-    // Link RevenueCat identity to this user
     if (isRevenueCatAvailable()) logInRC(data.user.id).catch(() => {});
-    // Fire-and-forget subscription refresh so index.tsx routing has fresh data
     setTimeout(() => { refreshSubscription().catch(() => {}); }, 0);
   };
 
   const signUp = async (email: string, password: string, name: string) => {
+    // --- السماح للمراجع بتخطي الـ Sign up أيضاً ---
+    if (email === "reviewshapeup@gmail.com") {
+      await signIn(email, password);
+      return;
+    }
+
     let res: Response;
     try {
       res = await fetch(`${API_URL}/auth/register`, {
@@ -234,17 +224,3 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth must be inside AuthProvider');
   return ctx;
 }
-
-export const COLORS = {
-  bg: '#050505',
-  surface: '#111111',
-  surfaceElevated: '#1A1A1A',
-  primary: '#FF3B30',
-  primaryDark: '#E6352B',
-  secondary: '#CCFF00',
-  text: '#FFFFFF',
-  textDim: '#A1A1AA',
-  border: '#27272A',
-  success: '#22C55E',
-  error: '#EF4444',
-};
