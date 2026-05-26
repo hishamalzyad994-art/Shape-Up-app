@@ -10,17 +10,11 @@
     "preview": {
       "distribution": "internal"
     },
-      "production": {
+    "production": {
       "autoIncrement": true
-    
+    }
   },
   "submit": {
     "production": {}
   }
 }
-{
-  "ios": {
-    "bundleIdentifier": "app.emergent.slimchallenge5de71fad6"
-  }
-}
-
