@@ -2,7 +2,7 @@
   "expo": {
     "name": "ShapeUp",
     "slug": "shapeup",
-    "version": "1.0.13",
+    "version": "1.0.14",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "shapeup",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.slimchallenge5de71fad6",
-      "buildNumber": "22",
+      "buildNumber": "30",
       "infoPlist": {
         "NSCameraUsageDescription": "Scan your meals to estimate calories",
         "NSPhotoLibraryUsageDescription": "Pick food photos to estimate calories",
